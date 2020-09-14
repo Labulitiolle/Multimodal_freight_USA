@@ -1,2 +1,15 @@
-# Multimodal_freight_USA
-Generate and analyse a multimodal freight network in the USA to make freight transportation greener. 
+# :seedling: Multimodal freight USA
+
+Goal: Generate and analyse a multimodal network in the USA to make freight transportation greener.
+
+
+## Structure
+
+| File | Description | Status |
+| ----------- | ----------- |  ----------- | 
+| Rail_EDA.ipynb | Exploration and cleaning of the [BTS](https://data-usdot.opendata.arcgis.com/datasets/north-american-rail-lines-1) rail network dataset | Done |
+| Rail_network.ipynb | Rail network analysis | WIP |
+
+## License
+
+This project is licensed under Private.
