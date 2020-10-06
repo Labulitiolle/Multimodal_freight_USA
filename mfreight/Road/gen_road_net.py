@@ -26,13 +26,14 @@ class RoadNet:
     #TODO: It will still be necessary to add the price.
     """
 
-    def __init__(self, graph: Graph = None, kg_co2_per_tkm: float = 0.080513):
+    def __init__(self, bbox: Polygon = None, graph: Graph = None, kg_co2_per_tkm: float = 0.080513):
         self.trans_mode = "road"
         self.kg_co2_per_tkm = kg_co2_per_tkm
         self.G = graph
         self.script_dir = os.path.dirname(__file__)
+        self.bbox = bbox
 
-    def load_BTS(self, bbox: Polygon = None) -> GeoDataFrame:
+    def load_BTS(self) -> GeoDataFrame:
         """
 
         :param bbox: If a subset of the US rail dataset should be returned.
@@ -45,8 +46,8 @@ class RoadNet:
             + "/data/National_Highway_Network-shp/National_Highway_Planning_Network.shp"
         )
 
-        if bbox:
-            edges = gpd.clip(edges, bbox)
+        if self.bbox:
+            edges = gpd.clip(edges, self.bbox)
 
         return edges
 
@@ -131,7 +132,7 @@ class RoadNet:
         edges["trans_mode"] = self.trans_mode
         edges["length"] = edges["KM"] * 1000
         edges["duration_h"] = pd.eval("edges.KM / edges.speed_kmh")
-        edges["CO2_eq_kg"] = pd.eval("edges.length /1000 * self.kg_co2_per_tkm")
+        edges["CO2_eq_kg"] = pd.eval("edges.KM * self.kg_co2_per_tkm")
         edges["key"] = 0
 
         nodes = self.gen_nodes_gdfs(edges)
@@ -208,9 +209,10 @@ class RoadNet:
         simplified: bool = True,
         save: bool = False,
         path: str = "mfreight/multimodal/data/road_G.plk",
+        return_gdfs: bool = False,
     ) -> Graph:
 
-        edges = self.load_BTS(bbox)
+        edges = self.load_BTS()
         nodes, edges = self.format_gdfs(edges)
         self.G = ox.graph_from_gdfs(nodes, edges)
         self.relabel_nodes(nodes)
@@ -221,4 +223,8 @@ class RoadNet:
         if save:
             nx.write_gpickle(self.G, path)
 
-        return self.G, nodes, edges
+        if return_gdfs:
+            return self.G, nodes, edges
+
+        else:
+            return self.G

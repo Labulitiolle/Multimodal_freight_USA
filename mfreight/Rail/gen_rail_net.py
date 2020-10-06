@@ -23,7 +23,12 @@ class RailNet:
     #TODO: It will still be necessary to add the price
     """
 
-    def __init__(self, graph: Graph = None, kg_co2_per_tkm=0.0195254):
+    def __init__(
+        self,
+        bbox: Polygon = None,
+        graph: Graph = None,
+        kg_co2_per_tkm: float = 0.0195254,
+    ):
         self.trans_mode = "rail"
         self.kg_co2_per_tkm = kg_co2_per_tkm
         self.track_to_speed_map = {
@@ -35,12 +40,13 @@ class RailNet:
             5: 130,
             6: 180,
             13: 97,
-            None: 10
+            None: 10,
         }
         self.G = graph
         self.script_dir = os.path.dirname(__file__)
+        self.bbox = bbox
 
-    def load_BTS(self, bbox: Polygon = None) -> tuple:
+    def load_BTS(self) -> tuple:
 
         edges = gpd.read_file(
             self.script_dir
@@ -51,16 +57,24 @@ class RailNet:
             + "/rail_data/North_American_Rail_Nodes-shp/North_American_Rail_Nodes.shp"
         )
 
-        if bbox:
-            edges = gpd.clip(edges, bbox)
+        if self.bbox:
+            edges = gpd.clip(edges, self.bbox)
 
         return nodes, edges
 
     @staticmethod
     def keep_only_valid_usa_rail(nodes: GeoDataFrame, edges: GeoDataFrame):
 
-        edges.drop(edges[~edges.eval("(NET == 'I' | NET == 'M') &  COUNTRY == 'US'")].index, inplace=True)
-        nodes.drop(nodes[~nodes.FRANODEID.isin(list(edges.u.values) + list(edges.v.values))].index, inplace=True)
+        edges.drop(
+            edges[~edges.eval("(NET == 'I' | NET == 'M') &  COUNTRY == 'US'")].index,
+            inplace=True,
+        )
+        nodes.drop(
+            nodes[
+                ~nodes.FRANODEID.isin(list(edges.u.values) + list(edges.v.values))
+            ].index,
+            inplace=True,
+        )
         nodes.set_index("FRANODEID", drop=False, inplace=True)
 
     def format_gpdfs(self, nodes: GeoDataFrame, edges: GeoDataFrame):
@@ -69,7 +83,7 @@ class RailNet:
 
         edges["trans_mode"] = self.trans_mode
         edges["length"] = edges["KM"] * 1000
-        edges["CO2_eq_kg"] = pd.eval("edges.length /1000 * self.kg_co2_per_tkm")
+        edges["CO2_eq_kg"] = pd.eval("edges.KM * self.kg_co2_per_tkm")
         edges["key"] = 0
 
         nodes["trans_mode"] = self.trans_mode
@@ -127,10 +141,14 @@ class RailNet:
         gdf["y"] = coords.y.astype(float)
 
     def load_intermodal_facilities(self) -> GeoDataFrame:
-        return gpd.read_file(
+        intermodal_facilities = gpd.read_file(
             self.script_dir
             + "/rail_data/Intermodal stations/Intermodal_Freight_Facilities_RailTOFCCOFC.shp"
         )
+        if self.bbox:
+            intermodal_facilities = gpd.clip(intermodal_facilities, self.bbox)
+
+        return intermodal_facilities
 
     @staticmethod
     def map_rail_to_intermodal_nodes(
@@ -182,9 +200,10 @@ class RailNet:
         simplified: bool = True,
         save: bool = False,
         path: str = "mfreight/multimodal/data/rail_G.plk",
+        return_gdfs: bool = False,
     ) -> Graph:
 
-        nodes, edges = self.load_BTS(bbox)
+        nodes, edges = self.load_BTS()
         self.format_gpdfs(nodes, edges)
         self.add_intermodal_nodes(nodes, edges)
         self.G = ox.graph_from_gdfs(nodes, edges)
@@ -195,4 +214,8 @@ class RailNet:
         if save:
             nx.write_gpickle(self.G, path)
 
-        return self.G, nodes, edges
+        if return_gdfs:
+            return self.G, nodes, edges
+
+        else:
+            return self.G

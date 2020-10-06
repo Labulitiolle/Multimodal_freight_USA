@@ -204,20 +204,36 @@ def test_gen_nodes_gdfs():
     assert (nodes.new_idx == result.new_idx).all()
 
 
-def test_gen_road_graph(mocker):
+def test_format_gdfs(mocker):
     mocker.patch(
-        "mfreight.Road.gen_road_net.RoadNet.load_BTS",
-        return_value=pd.DataFrame(
-            {
-                "OBJECTID": {"0": 1, "1": 2, "2": 3},
-                "STATUS": {"0": 1, "1": 1, "2": 1},
-                "BEGMP": {"0": 75.236, "1": 30.895, "2": 0.0},
-                "ENDMP": {"0": 193.382, "1": 31.953, "2": 0.0},
-                "KM": {"0": 29.081, "1": 0.689, "2": 3.869},
-            }
-        ),
+        "mfreight.Road.gen_road_net.RoadNet.add_incident_nodes", return_value=None
     )
     mocker.patch(
-        "mfreight.Road.gen_road_net.RoadNet.STFIPS_to_speed_map",
-        return_value=pd.Series([80, 90, 100, 110]),
+        "mfreight.Road.gen_road_net.RoadNet.add_highway_speed", return_value=None
     )
+    mocker.patch(
+        "mfreight.Road.gen_road_net.RoadNet.gen_nodes_gdfs", return_value=pd.DataFrame()
+    )
+
+    edges = gpd.GeoDataFrame(
+        {
+            "id": [100, 200, 300, 400],
+            "geometry": [LineString(),LineString(),LineString(), None],
+            "speed_kmh": [10, 50, 20,150],
+            "KM": [0.1, 1, 10, 100],
+            "u": [1, 2, 3, 4],
+            "v": [2, 3, 4, 5],
+            "STATUS": [1, 1, 1, 1],
+        },
+        crs="EPSG:4326",
+    )
+    net = RoadNet(kg_co2_per_tkm = 10)
+    net.format_gdfs(edges)
+
+    assert net.kg_co2_per_tkm == 10
+    assert "trans_mode" in list(edges.columns)
+    assert "key" in list(edges.columns)
+    assert list(edges.length) == [100, 1000, 10000]
+    assert list(edges.duration_h) == [0.01, 0.02, 0.5]
+    assert list(edges.CO2_eq_kg) == [1,10,100]
+
