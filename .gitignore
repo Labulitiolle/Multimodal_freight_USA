@@ -6,5 +6,4 @@ __pycache__
 .idea
 .pytest_cache
 .git
-mfreight/Multimodal/merge_graphs.py
-mfreight/Multimodal/merge_florida.ipynb
+local_tests.ipynb

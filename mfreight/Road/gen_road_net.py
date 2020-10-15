@@ -148,7 +148,7 @@ class RoadNet:
                     "v",
                     "STATUS",
                     "trans_mode",
-                    "key",
+                    "key"
                 ]
             ),
             axis=1,
@@ -205,7 +205,6 @@ class RoadNet:
 
     def gen_road_graph(
         self,
-        bbox: Polygon = None,
         simplified: bool = True,
         save: bool = False,
         path: str = "mfreight/multimodal/data/road_G.plk",

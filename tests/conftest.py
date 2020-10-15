@@ -132,3 +132,35 @@ def gen_nodes_edges_after_reindexing():
         crs="EPSG:4326",
     )
     return nodes, edges
+
+
+@pytest.fixture()
+def gen_formatted_rail_and_road_nodes():
+    road_nodes = gpd.GeoDataFrame(
+        index=[10000, 10002, 10003],
+        data={
+            "trans_mode": ["road", "road", "road"],
+            "x": [-22,2, 1],
+            "y": [-30.1, 3, 1],
+            "osmid": [10000, 10002, 1003],
+            "geometry": [Point(-22, -30.1),Point(2, 3), Point(1, 1)],
+            "key": [0, 0,0],
+            "STCYFIPS": [12343, 12345, 12123],
+        },
+    )
+
+    rail_nodes = gpd.GeoDataFrame(
+        index=[30001, 2, 10],
+        data={
+            "FRANODEID": [30001, 2, 10],
+            "STATE": ["FL", "FL", "FL"],
+            "STCYFIPS": [12354, 12321, 12111],
+            "geometry": [Point(3, 3), Point(1.9, 3), Point(0.5, 1)],
+            "trans_mode": ["rail", "intermodal", "intermodal"],
+            "key": [0, 0, 0],
+            "x": [3, 1.9, 0.5],
+            "y": [3, 3, 1],
+        },
+    )
+
+    return road_nodes, rail_nodes
