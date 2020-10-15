@@ -128,7 +128,7 @@ class RailNet:
 
     def add_speed_duration(self, edges: GeoDataFrame):
         edges["speed_kmh"] = edges.TRACKS.replace(self.track_to_speed_map)
-        edges["duration_h"] = pd.eval("edges.length * 1000 / edges.speed_kmh")
+        edges["duration_h"] = pd.eval("edges.KM / edges.speed_kmh")
 
     def add_x_y_pos(self, gdf: GeoDataFrame):
 

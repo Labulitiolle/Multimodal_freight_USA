@@ -24,14 +24,15 @@ def test_add_speed_duration():
     edges = pd.DataFrame(
         {
             "TRACKS": [1, 2, 3, None],
-            "length": [1000, 1500, 2000, 3000],
+            "length": [1600, 4000, 64000, 1600],
+            "KM": [1.6, 4, 64, 1.6],
             "u": [1, 2, 3, 4],
             "v": [2, 3, 4, 5],
         }
     )
     RailNet().add_speed_duration(edges)
     assert list(edges.speed_kmh) == [16, 40, 64, 10]
-    assert list(edges.duration_h) == [62500.0, 37500.0, 31250.0, 300000.0]
+    assert list(edges.duration_h) == [0.1,0.1,1,0.16]
 
 
 def test_add_x_y_pos():
