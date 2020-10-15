@@ -284,10 +284,11 @@ class MultimodalNet:
             self.print_graph_info(total_dist, weight_path, target_weight)
 
     @staticmethod
-    def print_graph_info(total_dist: Tuple[float, float],
-                         weight_path: Tuple[float, float],
-                         target_weight: str = "CO2_eq_kg",
-                         ):
+    def print_graph_info(
+        total_dist: Tuple[float, float],
+        weight_path: Tuple[float, float],
+        target_weight: str = "CO2_eq_kg",
+    ):
 
         if target_weight == "length":
 
@@ -343,7 +344,7 @@ class MultimodalNet:
         weight_path = nx.astar_path_length(
             self.G_multimodal_u, node_orig, node_dest, weight=target_weight
         )
-        
+
         shortest_path_nodes, explored = astar_revisited.astar_path(
             self.G_multimodal_u,
             node_orig,

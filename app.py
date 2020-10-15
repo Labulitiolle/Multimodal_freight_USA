@@ -164,7 +164,6 @@ Net = MultimodalNet()
     ],
 )
 def update_operator_dropdown(select_all):
-    Net = MultimodalNet()
     all_rail_owners = Net.get_rail_owners()
 
     options = [{"label": i, "value": i} for i in all_rail_owners]
@@ -201,7 +200,7 @@ def update_geo_map(select_arrival, select_departure, operators, weights):
 
     departure_y = float(re.findall(r"(-?\d+.\d+)\)", select_departure)[0])
     departure_x = float(re.findall(r"\((-?\d+.\d+)", select_departure)[0])
-    Net = MultimodalNet()
+
     Net.chose_operator(operators)
     Net.set_taget_weight_to_graph(weights["a"], weights["b"], weights["c"])
     fig = Net.plot_route(
@@ -234,7 +233,6 @@ def update_route_datatable(select_arrival, select_departure, operators, weights)
     departure_y = float(re.findall(r"(-?\d+.\d+)\)", select_departure)[0])
     departure_x = float(re.findall(r"\((-?\d+.\d+)", select_departure)[0])
 
-    Net = MultimodalNet()
     Net.chose_operator(operators)
     Net.set_taget_weight_to_graph(weights["a"], weights["b"], weights["c"])
     df = Net.get_route_detail(
