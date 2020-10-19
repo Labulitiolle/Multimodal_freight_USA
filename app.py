@@ -4,9 +4,10 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_table
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 from mfreight.Multimodal.graph_utils import MultimodalNet
 from mfreight.utils.plot import make_ternary_selector
+import json
 
 app = dash.Dash(
     __name__,
@@ -182,7 +183,7 @@ def update_operator_dropdown(select_all):
 
 
 @app.callback(
-    Output("map", "srcDoc"),
+    [Output("map", component_property="srcDoc"), Output("stats-container", "children")],
     [
         Input("arrival", component_property="value"),
         Input("departure", component_property="value"),
@@ -195,56 +196,39 @@ def update_geo_map(select_arrival, select_departure, operators, weights):
         weights = weights["points"][0]
     else:
         weights = {"a": 0, "b": 0, "c": 1}
+
     arrival_y = float(re.findall(r"(-?\d+.\d+)\)", select_arrival)[0])
     arrival_x = float(re.findall(r"\((-?\d+.\d+)", select_arrival)[0])
 
     departure_y = float(re.findall(r"(-?\d+.\d+)\)", select_departure)[0])
     departure_x = float(re.findall(r"\((-?\d+.\d+)", select_departure)[0])
 
+    Net.set_price((departure_x, departure_y), (arrival_x, arrival_y))
+    Net.set_target_weight_to_graph(weights["a"], weights["b"], weights["c"])
     Net.chose_operator(operators)
-    Net.set_taget_weight_to_graph(weights["a"], weights["b"], weights["c"])
-    fig = Net.plot_route(
+
+    fig, path = Net.plot_route(
         (departure_x, departure_y),
         (arrival_x, arrival_y),
         target_weight="target_feature",
         folium=True,
     )
-    return fig._repr_html_()
+
+    table = gen_table(Net.route_detail_from_graph(path))
+    return fig._repr_html_(), table
 
 
-@app.callback(
-    Output("stats-container", "children"),
-    [
-        Input("arrival", component_property="value"),
-        Input("departure", component_property="value"),
-        Input("operator-selector", component_property="value"),
-        Input("feature-selector", component_property="clickData"),
-    ],
-)
-def update_route_datatable(select_arrival, select_departure, operators, weights):
-    if weights:
-        weights = weights["points"][0]
-    else:
-        weights = {"a": 0, "b": 0, "c": 1}
+def gen_table(route_detail):
 
-    arrival_y = float(re.findall(r"(-?\d+.\d+)\)", select_arrival)[0])
-    arrival_x = float(re.findall(r"\((-?\d+.\d+)", select_arrival)[0])
-
-    departure_y = float(re.findall(r"(-?\d+.\d+)\)", select_departure)[0])
-    departure_x = float(re.findall(r"\((-?\d+.\d+)", select_departure)[0])
-
-    Net.chose_operator(operators)
-    Net.set_taget_weight_to_graph(weights["a"], weights["b"], weights["c"])
-    df = Net.get_route_detail(
-        (departure_x, departure_y), (arrival_x, arrival_y), "target_feature"
-    )
-
-    df.reset_index(inplace=True)
-    df = df.rename(columns={"index": ""})
+    route_detail.reset_index(inplace=True)
+    route_detail = route_detail.rename(columns={"index": ""})
     return dash_table.DataTable(
         id="stats-table",
-        columns=[{"name": i, "id": i, "editable": (i == "index")} for i in df.columns],
-        data=df.round(2).to_dict("rows"),
+        columns=[
+            {"name": i, "id": i, "editable": (i == "index")}
+            for i in route_detail.columns
+        ],
+        data=route_detail.round(2).to_dict("rows"),
         page_size=5,
         style_cell={"background-color": "#242a3b", "color": "#7b7d8d"},
         style_as_list_view=False,
