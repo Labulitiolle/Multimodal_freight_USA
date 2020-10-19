@@ -20,7 +20,6 @@ class RailNet:
     Load dataset, add the intermodal facilities, compute attributes (length, CO2_eq_kg, duration_h)
     and generate the rail network as a graph.
 
-    #TODO: It will still be necessary to add the price
     """
 
     def __init__(

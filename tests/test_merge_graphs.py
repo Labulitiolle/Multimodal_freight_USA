@@ -23,14 +23,13 @@ def test_map_intermodal_to_road(mocker):
     mocker.patch(
         "mfreight.Multimodal.merge_graphs.keep_only_intermodal",
         return_value=gpd.GeoDataFrame(
-            index=[2, 5, 10], data={"x": [1, 2, -3], "y": [1, 2, -3]}, crs="EPSG:4326"
+            index=[2, 5, 10], data={"x": [1, 2, -3], "y": [1, 2, -3]}
         ),
     )
 
     road_nodes = gpd.GeoDataFrame(
         index=[1001, 1002, 1003, 1004, 1005],
-        data={"x": [-2, -1.5, 2.5, 1, -0.2], "y": [-5, -2, 1.7, 1.5, 5]},
-        crs="EPSG:4326",
+        data={"x": [-2, -1.5, 2.5, 1, -0.2], "y": [-5, -2, 1.7, 1.5, 5]}
     )
 
     intermodal_to_road_map = MergeNets().map_intermodal_to_road(road_nodes, None)

@@ -1,4 +1,5 @@
 import os
+import re
 from typing import TypeVar, List, Set, Dict, Tuple, Optional, Callable, Any
 
 import matplotlib.pyplot as plt
@@ -8,7 +9,8 @@ import pandas as pd
 
 import osmnx as ox
 from geopy.distance import great_circle
-from mfreight.utils import astar_revisited, folium_revisited
+from geopy.geocoders import Nominatim
+from mfreight.utils import astar_revisited, folium_revisited, constants
 
 Polygon = TypeVar("shapely.geometry.polygon.Polygon")
 Graph = TypeVar("networkx.classes.multigraph.MultiGraph")
@@ -24,11 +26,10 @@ def keep_only_intermodal(nodes: GeoDataFrame) -> GeoDataFrame:
 class MultimodalNet:
     def __init__(
         self,
-        path: str = "mfreight/multimodal/data/multimodal_G.plk",
         path_u: str = "mfreight/multimodal/data/multimodal_G_u.plk",
     ):
-        self.G_multimodal = nx.read_gpickle(path)
         self.G_multimodal_u = nx.read_gpickle(path_u)
+        self.nodes, self.edges = ox.graph_to_gdfs(self.G_multimodal_u)
         self.script_dir = os.path.dirname(__file__)
         self.G_road = nx.read_gpickle(self.script_dir + "/data/road_G.plk")
         self.G_rail = nx.read_gpickle(self.script_dir + "/data/rail_G.plk")
@@ -41,7 +42,7 @@ class MultimodalNet:
     def normalize_features(
         self,
         edges: GeoDataFrame,
-        features: List[str] = ["length", "CO2_eq_kg", "duration_h"],
+        features: List[str] = ["price", "CO2_eq_kg", "duration_h"],
     ):
 
         for feature in features:
@@ -50,43 +51,44 @@ class MultimodalNet:
     @staticmethod
     def set_target_feature(
         edges: GeoDataFrame,
-        length_w: float = 0.33,
+        price_w: float = 0.33,
         duration_w: float = 0.33,
         CO2_eq_kg_w: float = 0.33,
     ):
 
         edges["target_feature"] = pd.eval(
-            "edges.length_normalized * length_w"
+            "edges.price_normalized * price_w"
             + "+ edges.CO2_eq_kg_normalized * CO2_eq_kg_w"
-            + "+ edges.duration_h * duration_w"
+            + "+ edges.duration_h_normalized * duration_w"
         )
 
-    def set_taget_weight_to_graph(
+    def set_target_weight_to_graph(
         self,
-        length_w: float = 0.33,
+        price_w: float = 0.33,
         duration_w: float = 0.33,
         CO2_eq_kg_w: float = 0.33,
     ):
-        nodes, edges = ox.graph_to_gdfs(self.G_multimodal_u)
-        self.normalize_features(edges)
-        self.set_target_feature(edges, length_w, duration_w, CO2_eq_kg_w)
-        self.G_multimodal_u = ox.graph_from_gdfs(nodes, edges)
+
+        self.normalize_features(self.edges)
+        self.set_target_feature(self.edges, price_w, duration_w, CO2_eq_kg_w)
+        self.G_multimodal_u = ox.graph_from_gdfs(self.nodes, self.edges)
 
     def get_rail_owners(self) -> List[str]:
-        edges = ox.graph_to_gdfs(self.G_multimodal_u, nodes=False)
         operators = np.array([])
-        rail_owners_cols = [col for col in edges.columns if col[:7] == "RROWNER"]
+        rail_owners_cols = [col for col in self.edges.columns if col[:7] == "RROWNER"]
         for col in rail_owners_cols:
-            mask_is_str = [True if isinstance(n, str) else False for n in edges[col]]
+            mask_is_str = [
+                True if isinstance(n, str) else False for n in self.edges[col]
+            ]
             operators = np.append(
-                operators, pd.unique(edges.loc[mask_is_str, col].values.ravel("K"))
+                operators, pd.unique(self.edges.loc[mask_is_str, col].values.ravel("K"))
             )
 
         return pd.unique(operators)
 
-    def chose_operator(self, operators: List[str] = ["CSXT"]) -> GeoDataFrame:
-        nodes, edges = ox.graph_to_gdfs(self.G_multimodal_u)
-        rail_edges = edges[edges.trans_mode == "rail"]
+    def chose_operator(self, operators: List[str] = ["CSXT"]):
+        nodes, edges = self.nodes.copy(), self.edges.copy()
+        rail_edges = edges[edges.trans_mode == "rail"].copy()
         rail_edges.fillna(value="None", inplace=True)
         rail_owners_cols = [col for col in rail_edges.columns if col[:7] == "RROWNER"]
         rail_rights_col = [col for col in rail_edges.columns if col[:7] == "TRKRGHT"]
@@ -103,40 +105,93 @@ class MultimodalNet:
                 mask_prev = mask
 
         edges.drop(index=rail_edges[~mask_prev].index, inplace=True)
+
         self.G_multimodal_u = ox.graph_from_gdfs(nodes, edges)
 
-        return edges
-
-    def plot_multimodal_graph(self):
-        nodes, edges = ox.graph_to_gdfs(self.G_multimodal)
-        intermodal_nodes = keep_only_intermodal(nodes)
-        fig, ax = ox.plot_graph(
-            self.G_rail,
-            edge_color="green",
-            edge_linewidth=2,
-            node_color="yellow",
-            node_size=2,
-            node_alpha=0.9,
-            bgcolor="white",
-            show=False,
+    def extract_state(self, position: Tuple[float, float]):
+        location = Nominatim(user_agent="green-multimodal-network").reverse(
+            position, zoom=5
         )
-        intermodal_nodes.plot(ax=ax, color="red")
-        ox.plot_graph(
-            self.G_road,
-            edge_color="grey",
-            node_color="blue",
-            bgcolor="white",
-            node_size=0,
-            node_alpha=0.9,
-            show=True,
-            ax=ax,
+        state = re.findall("(\w+)\,", location[0])[0]
+        state_code = constants.state_abbrev_map[state]
+
+        return state_code
+
+    def set_price(self, orig: Tuple[float, float], dest: Tuple[float, float]):
+        intermodal_price, truckload_price = self.get_price(orig, dest)
+        self.set_price_to_edges(intermodal_price, truckload_price)
+
+    def get_price(self, orig: Tuple[float, float], dest: Tuple[float, float]):
+
+        orig_state = self.extract_state(orig)
+        dest_state = self.extract_state(dest)
+
+        spot_price = pd.read_csv(
+            self.script_dir + "/data/spot_price.csv",
+            index_col=["Origin State", "Destination State"],
+        )  # mean aggregation
+        contract_price = pd.read_csv(
+            self.script_dir + "/data/contract_price.csv",
+            index_col=["Origin State", "Destination State"],
+        )
+
+        spot_price.fillna(contract_price, inplace=True)
+        spot_price = spot_price / 1.61
+
+        try:
+            intermodal_price = spot_price.loc[
+                (orig_state, dest_state), "Intermodal"
+            ].round(3)
+            truckload_price = spot_price.loc[
+                (orig_state, dest_state), "Truckload"
+            ].round(3)
+
+        except:
+            intermodal_price = 0.837
+            truckload_price = 1.044  # TODO DEFAULT median -> make flexible to distance
+
+        return intermodal_price, truckload_price
+
+    def set_price_to_graph(self, intermodal_price, truckload_price):
+
+        for u, v in self.G_multimodal_u.edges(data=False):
+            segment_length = self.G_multimodal_u[u][v][0]["length"] / 1000
+
+            if self.G_multimodal_u[u][v][0]["trans_mode"] == "rail":
+                self.G_multimodal_u[u][v][0]["price"] = (
+                    intermodal_price * segment_length
+                )
+            elif self.G_multimodal_u[u][v][0]["trans_mode"] == "road":
+                self.G_multimodal_u[u][v][0]["price"] = truckload_price * segment_length
+
+            else:
+                self.G_multimodal_u[u][v][0]["price"] = (
+                    1.24 * segment_length
+                )  # TODO DEFAULT
+
+    def set_price_to_edges(self, intermodal_price, truckload_price):
+
+        self.edges.loc[self.edges.trans_mode == "rail", "price"] = (
+            intermodal_price
+            * self.edges.loc[self.edges.trans_mode == "rail", "length"]
+            / 1000
+        )
+        self.edges.loc[self.edges.trans_mode == "road", "price"] = (
+            truckload_price
+            * self.edges.loc[self.edges.trans_mode == "road", "length"]
+            / 1000
+        )
+        self.edges.loc[self.edges.trans_mode == "intermodal_link", "price"] = (
+            1.24
+            * self.edges.loc[self.edges.trans_mode == "intermodal_link", "length"]
+            / 1000
         )
 
     @staticmethod
     def _get_weight(weight: str) -> Callable[[str], Any]:
         return lambda data: data.get(weight, 0)
 
-    def get_route_detail(
+    def route_detail_from_orig_dest(
         self,
         orig: Tuple[float, float],
         dest: Tuple[float, float],
@@ -152,16 +207,18 @@ class MultimodalNet:
 
         shortest_path_nx = nx.astar_path(G, node_orig, node_dest, weight=target_weight)
 
-        return self._route_detail(shortest_path_nx, show_entire_route=show_entire_route)
+        return self.route_detail_from_graph(
+            shortest_path_nx, show_entire_route=show_entire_route
+        )
 
-    def _route_detail(
+    def route_detail_from_graph(
         self,
         path: List[int],
         show_breakdown_by_mode: bool = True,
         show_entire_route: bool = False,
     ) -> DataFrame:
         # The first row displays the intermodal links
-        weights = ["trans_mode", "length", "CO2_eq_kg", "duration_h", "speed_kmh"]
+        weights = ["trans_mode", "price", "CO2_eq_kg", "duration_h", "length"]
         route_detail = pd.DataFrame(index=range(len(path) - 1), columns=weights)
 
         for w in weights:
@@ -177,12 +234,12 @@ class MultimodalNet:
         else:
             route_summary = pd.pivot_table(
                 route_detail,
-                values=["length", "CO2_eq_kg", "duration_h"],
+                values=["price", "CO2_eq_kg", "duration_h", "length"],
                 index=["trans_mode"],
                 aggfunc=np.sum,
             )
             route_summary["length"] = route_summary["length"] / 1000
-            route_summary.rename(columns={"length": "distance_km"})
+            route_summary.rename(columns={"length": "distance_km"},inplace=True)
             route_summary = route_summary.round(2)
 
             if show_breakdown_by_mode:
@@ -194,6 +251,35 @@ class MultimodalNet:
                 route_summary = pd.DataFrame(dict(route_summary.sum()), index=["Total"])
 
             return route_summary  # , list(route_detail.trans_mode).count("intermodal_link") TODO do I need this ?
+
+    def plot_multimodal_graph(self):
+        G_road = nx.read_gpickle(self.script_dir + "/data/road_G.plk")
+        G_rail = nx.read_gpickle(self.script_dir + "/data/rail_G.plk")
+
+        nodes = self.nodes.copy()
+        intermodal_nodes = keep_only_intermodal(nodes)
+
+        fig, ax = ox.plot_graph(
+            G_rail,
+            edge_color="green",
+            edge_linewidth=2,
+            node_color="yellow",
+            node_size=2,
+            node_alpha=0.9,
+            bgcolor="white",
+            show=False,
+        )
+        intermodal_nodes.plot(ax=ax, color="red")
+        ox.plot_graph(
+            G_road,
+            edge_color="grey",
+            node_color="blue",
+            bgcolor="white",
+            node_size=0,
+            node_alpha=0.9,
+            show=True,
+            ax=ax,
+        )
 
     def plot_route(
         self,
@@ -251,11 +337,14 @@ class MultimodalNet:
         total_dist = dist_non_highway + distance_highway
 
         if folium:
-            return folium_revisited.plot_route_folium(
-                G,
+            return (
+                folium_revisited.plot_route_folium(
+                    G,
+                    shortest_path_nodes,
+                    route_width=4,
+                    route_opacity=0.9,
+                ),
                 shortest_path_nodes,
-                route_width=4,
-                route_opacity=0.9,
             )
 
         else:
@@ -362,7 +451,7 @@ class MultimodalNet:
         explored_nodes = set(explored.keys())
         explored_nodes.update(explored.values())
         explored_nodes.remove(None)
-        nodes = ox.graph_to_gdfs(self.G_multimodal, edges=False)
+        nodes = self.nodes.copy()
         explored_nodes = nodes.loc[list(explored_nodes), :]
 
         fig, ax = plt.subplots(figsize=(15, 7))

@@ -57,7 +57,9 @@ body {
 }
 
 #graph-container {
-  margin: -55px 0px -50px 130px;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
 }
 
 #select-metric-outer {

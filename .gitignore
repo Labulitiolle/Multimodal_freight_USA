@@ -7,3 +7,4 @@ __pycache__
 .pytest_cache
 .git
 local_tests.ipynb
+mfreight/Multimodal/analysis_notebooks/rail_price_analysis.ipynb

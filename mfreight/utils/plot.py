@@ -10,7 +10,7 @@ def make_ternary_plot_grid():
             data_points.extend(
                 [
                     {
-                        "length": round((1 - i) * j, 1),
+                        "price": round((1 - i) * j, 1),
                         "duration_h": round(i, 1),
                         "CO2_eq_kg": round((1 - i) * (1 - j), 1),
                     }
@@ -37,11 +37,11 @@ def make_ternary_selector():
     fig = go.Figure(
         go.Scatterternary(
             mode="markers",
-            a=[i for i in map(lambda x: x["length"], data_points)],
+            a=[i for i in map(lambda x: x["price"], data_points)],
             b=[i for i in map(lambda x: x["duration_h"], data_points)],
             c=[i for i in map(lambda x: x["CO2_eq_kg"], data_points)],
             hovertemplate="<extra></extra>"
-            + "<br>length: %{a}"
+            + "<br>price: %{a}"
             + "<br>duration: %{b}"
             + "<br>CO2: %{c}",
             showlegend=False,
@@ -55,7 +55,7 @@ def make_ternary_selector():
         {
             "ternary": {
                 "sum": 1,
-                "aaxis": makeAxis("length", 0),
+                "aaxis": makeAxis("price", 0),
                 "baxis": makeAxis("<br>duration", 0),
                 "caxis": makeAxis("<br>CO2", 0),
             },
