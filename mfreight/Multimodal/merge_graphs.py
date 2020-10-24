@@ -33,8 +33,8 @@ class MergeNets:
     @staticmethod
     def generate_graphs(bbox: Polygon = None) -> tuple:
 
-        G_road = RoadNet(bbox = bbox).gen_road_graph(bbox, simplified=True, save=False)
-        G_rail = RailNet(bbox = bbox).gen_rail_graph(bbox, simplified=True, save=False)
+        G_road = RoadNet(bbox = bbox).gen_road_graph(simplified=True, save=False)
+        G_rail = RailNet(bbox = bbox).gen_rail_graph(simplified=True, save=False)
 
         return G_road, G_rail
 
@@ -159,7 +159,7 @@ class MergeNets:
         self.G_multimodal = nx.compose(G_road_w_link, self.G_rail)
         nodes, edges = ox.graph_to_gdfs(self.G_multimodal)
         # edges = edges[edges.key != 1] TODO There are 12 multi edges, not necessary to be removed
-        ox.graph_from_gdfs(nodes, edges)
+        edges['key'] = 0
         self.G_multimodal_u = build_graph.graph_from_gdfs(
             nodes, edges, undirected=True
         )  # TODO redesigned osmnx function to make the graph bidirectionnal

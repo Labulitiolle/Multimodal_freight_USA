@@ -4,6 +4,7 @@ from typing import TypeVar
 
 import geopandas as gpd
 import networkx as nx
+import numpy as np
 import osmnx as ox
 import pandas as pd
 
@@ -44,6 +45,7 @@ class RailNet:
         self.G = graph
         self.script_dir = os.path.dirname(__file__)
         self.bbox = bbox
+        self.class1_operators = ["BNSF", "UP", "CN", "CPRS", "KCS", "CSXT", "NS"]
 
     def load_BTS(self) -> tuple:
 
@@ -62,12 +64,35 @@ class RailNet:
         return nodes, edges
 
     @staticmethod
-    def keep_only_valid_usa_rail(nodes: GeoDataFrame, edges: GeoDataFrame):
+    def keep_only_valid_usa_rail(edges: GeoDataFrame):
 
         edges.drop(
             edges[~edges.eval("(NET == 'I' | NET == 'M') &  COUNTRY == 'US'")].index,
             inplace=True,
         )
+
+
+    def keep_only_class_one(self,edges):
+
+        rail_owners_cols = [col for col in edges.columns if col[:7] == "RROWNER"]
+        rail_rights_col = [col for col in edges.columns if col[:7] == "TRKRGHT"]
+
+        rail_operators_col = rail_owners_cols + rail_rights_col
+
+        mask_prev = np.array([False] * len(edges))
+        for col in rail_operators_col:
+            for operator in self.class1_operators:
+                mask = np.array([True if operator in n else False for n in edges[col]])
+                mask = mask | mask_prev
+                mask_prev = mask
+
+        edges.drop(index=edges[~mask_prev].index, inplace=True)
+
+
+    def filter_rail_dataset(self, nodes: GeoDataFrame, edges: GeoDataFrame):
+        self.keep_only_valid_usa_rail(edges)
+        self.keep_only_class_one(edges)
+
         nodes.drop(
             nodes[
                 ~nodes.FRANODEID.isin(list(edges.u.values) + list(edges.v.values))
@@ -88,7 +113,7 @@ class RailNet:
         nodes["trans_mode"] = self.trans_mode
         nodes["key"] = 0
 
-        self.keep_only_valid_usa_rail(nodes, edges)
+        self.filter_rail_dataset(nodes, edges)
         self.add_speed_duration(edges)
 
         edges.drop(
@@ -195,7 +220,6 @@ class RailNet:
 
     def gen_rail_graph(
         self,
-        bbox: Polygon = None,
         simplified: bool = True,
         save: bool = False,
         path: str = "mfreight/multimodal/data/rail_G.plk",

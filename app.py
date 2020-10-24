@@ -4,10 +4,9 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_table
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output
 from mfreight.Multimodal.graph_utils import MultimodalNet
 from mfreight.utils.plot import make_ternary_selector
-import json
 
 app = dash.Dash(
     __name__,
@@ -151,7 +150,7 @@ app.layout = html.Div(
     ],
 )
 
-Net = MultimodalNet()
+Net = MultimodalNet(path_u= "mfreight/Multimodal/data/multimodal_G_tot_u.plk")
 
 
 @app.callback(
@@ -204,7 +203,7 @@ def update_geo_map(select_arrival, select_departure, operators, weights):
     departure_x = float(re.findall(r"\((-?\d+.\d+)", select_departure)[0])
 
     Net.set_price((departure_x, departure_y), (arrival_x, arrival_y))
-    Net.set_target_weight_to_graph(weights["a"], weights["b"], weights["c"])
+    Net.set_target_weight_to_edges(weights["a"], weights["b"], weights["c"])
     Net.chose_operator(operators)
 
     fig, path = Net.plot_route(
@@ -242,6 +241,8 @@ def gen_table(route_detail):
         ],
     )
 
+## Dev
+# if __name__ == "__main__":
+#     app.run_server(debug=True)
 
-if __name__ == "__main__":
-    app.run_server(debug=True)
+server.run(host='0.0.0.0', port=5000)

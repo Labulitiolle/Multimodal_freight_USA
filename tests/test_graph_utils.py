@@ -1,4 +1,5 @@
 import numpy as np
+import geopandas as gpd
 import pandas as pd
 import pytest
 
@@ -26,13 +27,25 @@ def test_chose_operator(mocker):
     mocker.patch(
         "osmnx.graph_to_gdfs",
         return_value=(
-            pd.DataFrame([]),
-            pd.DataFrame(
+            gpd.GeoDataFrame(
+                {
+                    "x": [1, 2, 3, 4, 5],
+                    "y": [2, 3, 4, 5, 6],
+                    "key": [0, 0, 0, 0, 0],
+                    "geometry": [1,2,3,4,5],
+                },
+                crs="EPSG:4326",
+            ),
+            gpd.GeoDataFrame(
                 {
                     "trans_mode": ["rail", "rail", "rail", "rail", "road"],
                     "RROWNER1": ["CSXT", "AGR", ["CSXT", "AGR"], "BAYL", np.nan],
                     "RROWNER2": ["GFRR", ["GFRR", "CSXT"], "CSXT", "BAYL", np.nan],
-                }
+                    "u": [1, 2, 3, 4, 5],
+                    "v": [2, 3, 4, 5, 6],
+                    "key": [0, 0, 0, 0, 0],
+                },
+                crs="EPSG:4326",
             ),
         ),
     )

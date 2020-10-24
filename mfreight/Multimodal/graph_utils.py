@@ -10,7 +10,7 @@ import pandas as pd
 import osmnx as ox
 from geopy.distance import great_circle
 from geopy.geocoders import Nominatim
-from mfreight.utils import astar_revisited, folium_revisited, constants
+from mfreight.utils import astar_revisited, folium_revisited, constants, build_graph
 
 Polygon = TypeVar("shapely.geometry.polygon.Polygon")
 Graph = TypeVar("networkx.classes.multigraph.MultiGraph")
@@ -26,7 +26,7 @@ def keep_only_intermodal(nodes: GeoDataFrame) -> GeoDataFrame:
 class MultimodalNet:
     def __init__(
         self,
-        path_u: str = "mfreight/multimodal/data/multimodal_G_u.plk",
+        path_u: str = "mfreight/Multimodal/data/multimodal_G_u.plk",
     ):
         self.G_multimodal_u = nx.read_gpickle(path_u)
         self.nodes, self.edges = ox.graph_to_gdfs(self.G_multimodal_u)
@@ -62,7 +62,8 @@ class MultimodalNet:
             + "+ edges.duration_h_normalized * duration_w"
         )
 
-    def set_target_weight_to_graph(
+
+    def set_target_weight_to_edges(
         self,
         price_w: float = 0.33,
         duration_w: float = 0.33,
@@ -71,7 +72,7 @@ class MultimodalNet:
 
         self.normalize_features(self.edges)
         self.set_target_feature(self.edges, price_w, duration_w, CO2_eq_kg_w)
-        self.G_multimodal_u = ox.graph_from_gdfs(self.nodes, self.edges)
+        # self.G_multimodal_u = ox.graph_from_gdfs(self.nodes, self.edges)
 
     def get_rail_owners(self) -> List[str]:
         operators = np.array([])
@@ -105,13 +106,47 @@ class MultimodalNet:
                 mask_prev = mask
 
         edges.drop(index=rail_edges[~mask_prev].index, inplace=True)
+        edges.drop(
+            edges.columns.difference(
+                [
+                    "trans_mode",
+                    "length",
+                    "duration_h",
+                    "CO2_eq_kg",
+                    "price",
+                    "geometry",
+                    "key",
+                    "target_feature",
+                    "u",
+                    "v",
+                ]
+            ),
+            axis=1,
+            inplace=True,
+        )
+        self.G_multimodal_u = build_graph.graph_from_gdfs_revisited(nodes, edges)
 
-        self.G_multimodal_u = ox.graph_from_gdfs(nodes, edges)
+        return nodes, edges
+
+    def chose_operator_in_graph(self, nodes, edges, operators: List[str] = ["CSXT"]):
+        G = build_graph.graph_from_gdfs_revisited(nodes, edges)
+        to_remove = [
+            (u, v)
+            for u, v, d in G.edges(data=True)
+            if not np.isin(operators, list(d.values())).any()
+        ]
+        G.remove_edges(to_remove)
 
     def extract_state(self, position: Tuple[float, float]):
-        location = Nominatim(user_agent="green-multimodal-network").reverse(
-            position, zoom=5
-        )
+        try:
+            location = Nominatim(user_agent="green-multimodal-network").reverse(
+                position, zoom=5
+            )
+        except:
+            raise AssertionError(
+                "The chosen position is not on land"
+            )  # TODO improve the dash error message
+
         state = re.findall("(\w+)\,", location[0])[0]
         state_code = constants.state_abbrev_map[state]
 
@@ -239,7 +274,7 @@ class MultimodalNet:
                 aggfunc=np.sum,
             )
             route_summary["length"] = route_summary["length"] / 1000
-            route_summary.rename(columns={"length": "distance_km"},inplace=True)
+            route_summary.rename(columns={"length": "distance_km"}, inplace=True)
             route_summary = route_summary.round(2)
 
             if show_breakdown_by_mode:
@@ -253,30 +288,39 @@ class MultimodalNet:
             return route_summary  # , list(route_detail.trans_mode).count("intermodal_link") TODO do I need this ?
 
     def plot_multimodal_graph(self):
-        G_road = nx.read_gpickle(self.script_dir + "/data/road_G.plk")
-        G_rail = nx.read_gpickle(self.script_dir + "/data/rail_G.plk")
+        # G_road = nx.read_gpickle(self.script_dir + "/data/road_G.plk")
+        # G_rail = nx.read_gpickle(self.script_dir + "/data/rail_G.plk")
+        nodes_rail  = [n for n, data in self.G_multimodal_u.nodes(data=True) if data["trans_mode"]=='rail']
+        G_rail = self.G_multimodal_u.subgraph(nodes_rail)
+        nodes_road = [n for n, data in self.G_multimodal_u.nodes(data=True) if data["trans_mode"] == 'road']
+        G_road = self.G_multimodal_u.subgraph(nodes_road)
 
         nodes = self.nodes.copy()
         intermodal_nodes = keep_only_intermodal(nodes)
 
-        fig, ax = ox.plot_graph(
+        fig, ax = plt.subplots(figsize=(20, 10))
+        ox.plot_graph(
             G_rail,
             edge_color="green",
-            edge_linewidth=2,
+            edge_linewidth=1,
+            edge_alpha=0.5,
             node_color="yellow",
-            node_size=2,
-            node_alpha=0.9,
+            node_size=1,
+            node_alpha=0.1,
             bgcolor="white",
             show=False,
+            ax = ax
         )
         intermodal_nodes.plot(ax=ax, color="red")
         ox.plot_graph(
             G_road,
-            edge_color="grey",
+            edge_color="blue",
+            edge_linewidth=1,
+            edge_alpha=0.1,
             node_color="blue",
             bgcolor="white",
-            node_size=0,
-            node_alpha=0.9,
+            node_size=0.01,
+            node_alpha=0.2,
             show=True,
             ax=ax,
         )
