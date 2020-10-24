@@ -82,7 +82,7 @@ def build_upper_left_panel():
                         children=dcc.Checklist(
                             id="operator-select-all",
                             options=[{"label": "Select All Operators", "value": "All"}],
-                            value=[],
+                            value=["All"],
                         ),
                     ),
                     html.Div(
@@ -168,12 +168,8 @@ def update_operator_dropdown(select_all):
 
     options = [{"label": i, "value": i} for i in all_rail_owners]
 
-    ctx = dash.callback_context
-    if ctx.triggered[0]["prop_id"].split(".")[0] == "operator-select-all":
-        if select_all == ["All"]:
-            value = [i["value"] for i in options]
-        else:
-            value = all_rail_owners[:4]
+    if select_all == ["All"]:
+        value = [i["value"] for i in options]
     else:
         value = all_rail_owners[:4]
 
@@ -241,8 +237,8 @@ def gen_table(route_detail):
         ],
     )
 
-## Dev
-# if __name__ == "__main__":
-#     app.run_server(debug=True)
+# Dev
+if __name__ == "__main__":
+    app.run_server(debug=True)
 
-server.run(host='0.0.0.0', port=5000)
+# server.run(host='0.0.0.0', port=5000)

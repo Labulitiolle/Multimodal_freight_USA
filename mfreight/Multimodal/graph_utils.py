@@ -33,6 +33,7 @@ class MultimodalNet:
         self.script_dir = os.path.dirname(__file__)
         self.G_road = nx.read_gpickle(self.script_dir + "/data/road_G.plk")
         self.G_rail = nx.read_gpickle(self.script_dir + "/data/rail_G.plk")
+        self.class1_operators = ["BNSF", "UP", "CN", "CPRS", "KCS", "CSXT", "NS"]
 
     @staticmethod
     def feature_scaling(x: NDArray) -> NDArray:
@@ -85,7 +86,7 @@ class MultimodalNet:
                 operators, pd.unique(self.edges.loc[mask_is_str, col].values.ravel("K"))
             )
 
-        return pd.unique(operators)
+        return list(set(self.class1_operators) & set(pd.unique(operators)))
 
     def chose_operator(self, operators: List[str] = ["CSXT"]):
         nodes, edges = self.nodes.copy(), self.edges.copy()

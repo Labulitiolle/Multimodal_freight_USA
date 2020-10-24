@@ -2,7 +2,6 @@
 
 import networkx as nx
 import pandas as pd
-import time
 from shapely.geometry import LineString
 
 
@@ -34,7 +33,6 @@ def graph_from_gdfs(gdf_nodes, gdf_edges, graph_attrs=None, undirected=False):
     G.add_nodes_from(gdf_nodes.index)
     for col in gdf_nodes.columns:
         nx.set_node_attributes(G, name=col, values=gdf_nodes[col].dropna())
-    print(f"time elapsed: {time.time() - start}s")
     # add each edge and its non-null attributes
     if undirected:
         for (u, v, k), row in gdf_edges.set_index(["u", "v", "key"]).iterrows():

@@ -72,7 +72,7 @@ class RailNet:
         )
 
 
-    def keep_only_class_one(self,edges):
+    def keep_only_class_one(self, edges):
 
         rail_owners_cols = [col for col in edges.columns if col[:7] == "RROWNER"]
         rail_rights_col = [col for col in edges.columns if col[:7] == "TRKRGHT"]
@@ -82,7 +82,8 @@ class RailNet:
         mask_prev = np.array([False] * len(edges))
         for col in rail_operators_col:
             for operator in self.class1_operators:
-                mask = np.array([True if operator in n else False for n in edges[col]])
+                edge_col = edges[col].replace({None: 'None'})
+                mask = np.array([True if operator in n else False for n in edge_col])
                 mask = mask | mask_prev
                 mask_prev = mask
 

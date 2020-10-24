@@ -137,8 +137,8 @@ class MergeNets:
         self,
         import_preprocesses_graphs: bool = True,
         save: bool = True,
-        path: str = "mfreight/multimodal/data/multimodal_G.plk",  # TODO relative path
-        path_u: str = "mfreight/multimodal/data/multimodal_G_u.plk",
+        path: str = "/data/multimodal_G.plk",
+        path_u: str = "/data/multimodal_G_u.plk",
     ):
 
         if import_preprocesses_graphs:
@@ -162,11 +162,11 @@ class MergeNets:
         edges['key'] = 0
         self.G_multimodal_u = build_graph.graph_from_gdfs(
             nodes, edges, undirected=True
-        )  # TODO redesigned osmnx function to make the graph bidirectionnal
+        )
 
         if save:
-            nx.write_gpickle(self.G_multimodal.to_undirected(), path)
-            nx.write_gpickle(self.G_multimodal_u, path_u)
+            nx.write_gpickle(self.G_multimodal.to_undirected(), self.script_dir + path)
+            nx.write_gpickle(self.G_multimodal_u, self.script_dir + path_u)
 
 
 
