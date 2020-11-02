@@ -7,6 +7,7 @@ import dash_table
 from dash.dependencies import Input, Output
 from mfreight.Multimodal.graph_utils import MultimodalNet
 from mfreight.utils.plot import make_ternary_selector
+from mfreight.utils import build_graph
 
 app = dash.Dash(
     __name__,
@@ -151,6 +152,7 @@ app.layout = html.Div(
 )
 
 Net = MultimodalNet(path_u= "mfreight/Multimodal/data/multimodal_G_tot_u.plk")
+price_idx = Net.set_price_to_graph()
 
 
 @app.callback(
@@ -173,7 +175,6 @@ def update_operator_dropdown(select_all):
     else:
         value = all_rail_owners[:4]
 
-    Net.chose_operator(value)
     return value, options, "Multimodal route"
 
 
@@ -198,18 +199,36 @@ def update_geo_map(select_arrival, select_departure, operators, weights):
     departure_y = float(re.findall(r"(-?\d+.\d+)\)", select_departure)[0])
     departure_x = float(re.findall(r"\((-?\d+.\d+)", select_departure)[0])
 
-    Net.set_price((departure_x, departure_y), (arrival_x, arrival_y))
-    Net.set_target_weight_to_edges(weights["a"], weights["b"], weights["c"])
-    Net.chose_operator(operators)
+    orig_state = Net.extract_state((departure_x, departure_y))
+    dest_state = Net.extract_state((arrival_x, arrival_y))
+
+    if (orig_state, dest_state) in price_idx:
+        price_target = (orig_state, dest_state)
+    else:
+        price_target = ('default', 'default')
+
+    if weights["a"] > weights["b"] and weights["a"] > weights["c"]:
+        target = price_target
+    elif weights["b"] > weights["a"] and weights["b"] > weights["c"]:
+        target = 'duration_h'
+    elif weights["c"] > weights["a"] and weights["c"] > weights["b"]:
+        target = 'CO2_eq_kg'
+    else:
+        target = 'price' # TODO simplify feature selector
+    removed_edges, removed_nodes = Net.chose_operator_in_graph(operators)
 
     fig, path = Net.plot_route(
         (departure_x, departure_y),
         (arrival_x, arrival_y),
-        target_weight="target_feature",
+        target_weight=target,
         folium=True,
     )
 
-    table = gen_table(Net.route_detail_from_graph(path))
+    table = gen_table(Net.route_detail_from_graph(path, price_target=price_target))
+    build_graph.add_nodes_from_df(Net.G_multimodal_u, removed_nodes)
+    build_graph.add_edges_from_df(Net.G_multimodal_u, removed_edges)
+
+
     return fig._repr_html_(), table
 
 

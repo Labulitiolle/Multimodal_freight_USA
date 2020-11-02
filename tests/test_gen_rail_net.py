@@ -1,6 +1,8 @@
-import pytest
+import numpy as np
 import pandas as pd
+import pytest
 from shapely.geometry import Point
+
 from mfreight.Rail.gen_rail_net import RailNet
 
 
@@ -108,3 +110,18 @@ def test_add_intermodal_nodes(mocker):
     RailNet().add_intermodal_nodes(nodes, edges)
     assert list(nodes.FRANODEID) == [400, 2, 3, 300, 5]
     assert list(edges.u) == [400, 2, 3]
+
+def test_extract_nested_operators():
+    rail_edges = pd.DataFrame(
+                {
+                    "RROWNER1": ["CSXT", "AGR", ["CSXT", "AGR"]],
+                    "RROWNER2": ["GFRR", ["GFRR", "CSXT"], "CSXT"],
+                    "TRKRGHTS2": ["GFRR", ["GFRR", "CSXT", "NS"], "CSXT"]
+                }
+            )
+    RailNet().extract_nested_operators(rail_edges)
+    print(rail_edges)
+    assert list(rail_edges.iloc[0,:]) == ["CSXT", "GFRR", "GFRR", np.nan, np.nan, np.nan] #TODO np.nan not correct
+    assert list(rail_edges.iloc[1,:]) == ["AGR", "GFRR", "CSXT", "CSXT", "GFRR", "CSXT", "NS"]
+
+

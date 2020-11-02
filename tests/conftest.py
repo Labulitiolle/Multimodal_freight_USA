@@ -1,8 +1,8 @@
+import geopandas as gpd
+import numpy as np
+import osmnx as ox
 import pandas as pd
 import pytest
-
-import geopandas as gpd
-import osmnx as ox
 from shapely.geometry import LineString, Point
 
 
@@ -248,3 +248,46 @@ def gen_graph_for_details():
     )
 
     return ox.graph_from_gdfs(nodes, edges)
+
+
+@pytest.fixture()
+def gen_graph_for_operator_choice():
+    nodes = gpd.GeoDataFrame(
+        {
+            "x": [1, 2, 3, 4, 5],
+            "y": [2, 3, 4, 5, 6],
+            "key": [0, 0, 0, 0, 0],
+            "geometry": [1, 2, 3, 4, 5],
+        },
+        crs="EPSG:4326",
+    )
+    edges = gpd.GeoDataFrame(
+        {
+            "trans_mode": ["rail", "rail", "rail", "rail", "road"],
+            "RROWNER1": ["CSXT", "AGR", "CSXT", "CN", np.nan],
+            "RROWNER2": ["GFRR", "CSXT", "BAYL", np.nan, np.nan],
+            "TRKRGHTS1": ["NS", "CSXT", np.nan, np.nan, np.nan],
+            "u": [1, 2, 3, 4, 5],
+            "v": [2, 3, 4, 5, 6],
+            "key": [0, 0, 0, 0, 0],
+        },
+        crs="EPSG:4326",
+    )
+
+    return ox.graph_from_gdfs(nodes, edges)
+
+
+@pytest.fixture()
+def gen_edges_to_remove():
+    return gpd.GeoDataFrame(
+        {
+            "trans_mode": ["rail", "rail"],
+            "RROWNER1": ["AGR", "CSXT"],
+            "RROWNER2": ["CSXT", "BAYL"],
+            "TRKRGHTS1": ["CSXT", np.nan],
+            "u": [2, 3],
+            "v": [3, 4],
+            "key": [0, 0],
+        },
+        crs="EPSG:4326",
+    )

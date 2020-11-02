@@ -3,6 +3,7 @@
 import json
 
 from osmnx import utils_graph
+from mfreight.utils import build_graph
 
 # folium is an optional dependency for the folium plotting functions
 try:
@@ -209,8 +210,9 @@ def plot_route_folium(
             "The folium package must be installed to use this optional feature."
         )
 
+    route_G = G.subgraph(route)
     # create gdf of the route edges
-    gdf_edges = utils_graph.graph_to_gdfs(G, nodes=False, fill_edge_geometry=True)
+    gdf_edges = utils_graph.graph_to_gdfs(route_G, nodes=False, fill_edge_geometry=True)
     route_nodes = list(zip(route[:-1], route[1:]))
     index = [
         gdf_edges[(gdf_edges["u"] == u) & (gdf_edges["v"] == v)].index[0]

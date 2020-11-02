@@ -5,155 +5,129 @@ import pytest
 
 from mfreight.Multimodal.graph_utils import MultimodalNet
 
+Net = MultimodalNet()
+
 
 def test_get_rail_owners(mocker):
     mocker.patch(
-        "osmnx.graph_to_gdfs",
-        return_value=(
-            None,
-            pd.DataFrame(
-                {
-                    "RROWNER1": ["CSXT", "AGR", ["CSXT", "AGR"]],
-                    "RROWNER2": ["GFRR", ["GFRR", "CSXT"], "CSXT"],
-                }
-            ),
+        "mfreight.Multimodal.graph_utils.MultimodalNet.load_and_format_csv",  # TODO
+        return_value=gpd.GeoDataFrame(
+            {
+                "RROWNER1": ["CSXT", "AGR"],
+                "RROWNER2": ["GFRR", "CSXT"],
+                "TRKRGHTS1": ["NS", "CSXT"],
+            }
         ),
     )
     rail_owners = MultimodalNet().get_rail_owners()
-    assert list(rail_owners) == ["CSXT", "AGR", "GFRR"]
+    assert list(rail_owners) == ["CSXT", "NS"]
 
 
-def test_chose_operator(mocker):
+def test_chose_operator_in_df(mocker):
     mocker.patch(
-        "osmnx.graph_to_gdfs",
-        return_value=(
-            gpd.GeoDataFrame(
-                {
-                    "x": [1, 2, 3, 4, 5],
-                    "y": [2, 3, 4, 5, 6],
-                    "key": [0, 0, 0, 0, 0],
-                    "geometry": [1,2,3,4,5],
-                },
-                crs="EPSG:4326",
-            ),
-            gpd.GeoDataFrame(
-                {
-                    "trans_mode": ["rail", "rail", "rail", "rail", "road"],
-                    "RROWNER1": ["CSXT", "AGR", ["CSXT", "AGR"], "BAYL", np.nan],
-                    "RROWNER2": ["GFRR", ["GFRR", "CSXT"], "CSXT", "BAYL", np.nan],
-                    "u": [1, 2, 3, 4, 5],
-                    "v": [2, 3, 4, 5, 6],
-                    "key": [0, 0, 0, 0, 0],
-                },
-                crs="EPSG:4326",
-            ),
+        "mfreight.Multimodal.graph_utils.MultimodalNet.load_and_format_csv",  # TODO
+        return_value=gpd.GeoDataFrame(
+            {
+                "trans_mode": ["rail", "rail", "rail", "rail"],
+                "RROWNER1": ["CSXT", "AGR", "CSXT", "CN"],
+                "RROWNER2": ["GFRR", "CSXT", "BAYL", np.nan],
+                "TRKRGHTS1": ["NS", "CSXT", np.nan, np.nan],
+                "u": [1, 2, 3, 4],
+                "v": [2, 3, 4, 5],
+                "key": [0, 0, 0, 0],
+            },
+            crs="EPSG:4326",
         ),
     )
-    mocker.patch("osmnx.graph_from_gdfs", return_value=None)
 
-    edges = MultimodalNet().chose_operator(["AGR", "GFRR"])
-
-
-def test_feature_scaling():
-    x = np.array([0, 5, 1, 10])
-
-    result = MultimodalNet().feature_scaling(x)
-
-    assert list(result) == [0, 0.5, 0.1, 1]
-
-
-def test_normalize_features(gen_edges_to_normalize):
-    edges = gen_edges_to_normalize
-
-    MultimodalNet().normalize_features(edges)
-
-    assert list(edges.columns) == [
-        "price",
-        "duration_h",
-        "CO2_eq_kg",
-        "length",
-        "price_normalized",
-        "CO2_eq_kg_normalized",
-        "duration_h_normalized",
+    edges_to_remove, nodes_to_remove = MultimodalNet().chose_operator_in_df(
+        ["CN", "NS"]
+    )
+    assert list(edges_to_remove.u) == [2, 3]
+    assert list(edges_to_remove.v) == [3, 4]
+    assert list(edges_to_remove.columns) == [
+        "trans_mode",
+        "RROWNER1",
+        "RROWNER2",
+        "TRKRGHTS1",
+        "u",
+        "v",
+        "key",
     ]
-    assert list(edges["price_normalized"]) == [0, 0.5, 0.1, 1]
-    assert list(edges["CO2_eq_kg_normalized"]) == [0, 1, 0.1, 0.2]
 
 
-testdata_target_feature = [
-    (1, 0, 0, [0, 0.5, 0.1, 1]),
-    (0, 0, 1, [0, 1, 0.1, 0.2]),
-    (0.33, 0.33, 0.33, [0, 0.66, 0.1, 0.73]),
-]
-
-
-@pytest.mark.parametrize(
-    "price_w, duration_w, CO2_eq_kg_w, expected", testdata_target_feature
-)
-def test_set_target_feature(
-    price_w, duration_w, CO2_eq_kg_w, expected, gen_edges_normalized
+def test_chose_operator_in_graph(
+    mocker, gen_graph_for_operator_choice, gen_edges_to_remove
 ):
-    edges = gen_edges_normalized
-
-    Net = MultimodalNet()
-    Net.set_target_feature(edges, price_w, duration_w, CO2_eq_kg_w)
-
-    assert list(round(edges.target_feature, 2)) == expected
-
-
-testdata_set_price = [(["CA", "CO"], 2.153, 1.775), (["CA", "MD"], 0.837, 1.044)]
-
-
-@pytest.mark.parametrize(
-    "orig_dest, expected_intermodal_price, expected_truckload_price",
-    testdata_set_price,
-)
-def test_get_price(
-    orig_dest, expected_intermodal_price, expected_truckload_price, mocker
-):
-    mocker.patch(
-        "mfreight.Multimodal.graph_utils.MultimodalNet.extract_state",
-        side_effect=orig_dest,
-    )
-    intermodal_price, truckload_price = MultimodalNet().get_price((1, 2), (2, 3))
-
-    assert intermodal_price == expected_intermodal_price
-    assert truckload_price == expected_truckload_price
-
-
-def test_set_price_to_edges(mocker):
-    mocker.patch(
-        "osmnx.graph_to_gdfs",
-        return_value=(
-            pd.DataFrame([]),
-            pd.DataFrame(
-                {
-                    "trans_mode": ["rail", "road", "intermodal_link"],
-                    "length": [1000, 1000, 1000],
-                }
-            ),
-        ),
-    )
-
-    Net = MultimodalNet()
-    Net.set_price_to_edges(intermodal_price=1, truckload_price=2)
-
-    assert list(Net.edges.price) == [1, 2, 1.24]
-
-
-def test_set_price_to_graph(gen_graph_for_price, mocker):
-    graph = gen_graph_for_price
     mocker.patch(
         "networkx.read_gpickle",
-        return_value=graph,
+        return_value=gen_graph_for_operator_choice,
+    )
+    mocker.patch(
+        "mfreight.Multimodal.graph_utils.MultimodalNet.chose_operator_in_df",
+        return_value=(gen_edges_to_remove, None),
     )
 
     Net = MultimodalNet()
-    Net.set_price_to_graph(intermodal_price=1, truckload_price=2)
+    MultimodalNet().chose_operator_in_graph(["CN", "NS"])
 
-    assert Net.G_multimodal_u[10000][10002][0]["price"] == 2
-    assert Net.G_multimodal_u[10002][10003][0]["price"] == 1
-    assert Net.G_multimodal_u[10003][10000][0]["price"] == 1.24
+    assert len(Net.G_multimodal_u) == 7
+    assert list(Net.G_multimodal_u.edges) == [(1, 2, 0), (4, 5, 0), (5, 6, 0)] #Road is not removed
+
+
+def test_extract_state(mocker):
+    mocker.patch(
+        "geopy.geocoders.Nominatim",
+        return_value="Florida, United States of America",  # TODO
+    )
+
+    state = Net.extract_state((30.439440, -85.057166))
+
+    assert state == "FL"
+
+
+def test_set_price_to_graph(mocker, gen_graph_for_operator_choice):
+    mocker.patch(
+        "MultimodalNet.G_multimodal_u",  # TODO
+        return_value=gen_graph_for_operator_choice,
+    )
+
+
+# @pytest.mark.parametrize(
+#     "orig_dest, expected_intermodal_price, expected_truckload_price",
+#     testdata_set_price,
+# )
+# def test_get_price(
+#     orig_dest, expected_intermodal_price, expected_truckload_price, mocker
+# ):
+#     mocker.patch(
+#         "mfreight.Multimodal.graph_utils.MultimodalNet.extract_state",
+#         side_effect=orig_dest,
+#     )
+#     intermodal_price, truckload_price = MultimodalNet().get_price((1, 2), (2, 3))
+#
+#     assert intermodal_price == expected_intermodal_price
+#     assert truckload_price == expected_truckload_price
+
+
+# def test_set_price_to_edges(mocker):
+#     mocker.patch(
+#         "osmnx.graph_to_gdfs",
+#         return_value=(
+#             pd.DataFrame([]),
+#             pd.DataFrame(
+#                 {
+#                     "trans_mode": ["rail", "road", "intermodal_link"],
+#                     "length": [1000, 1000, 1000],
+#                 }
+#             ),
+#         ),
+#     )
+#
+#     Net = MultimodalNet()
+#     Net.set_price_to_edges(intermodal_price=1, truckload_price=2)
+#
+#     assert list(Net.edges.price) == [1, 2, 1.24]
 
 
 def test_route_detail_from_graph(mocker, gen_graph_for_details):

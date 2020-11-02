@@ -7,4 +7,4 @@ __pycache__
 .pytest_cache
 .git
 local_tests.ipynb
-app1.py
+Notebooks/Gen_plots_for_report.ipynb

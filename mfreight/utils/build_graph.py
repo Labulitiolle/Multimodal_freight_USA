@@ -1,8 +1,11 @@
 """All credits to Geoff Boeing, this script was taken from his osmnx repository and adapted for my use."""
 
+import geopandas as gpd
 import networkx as nx
+import numpy as np
 import pandas as pd
-from shapely.geometry import LineString
+from osmnx import utils
+from shapely.geometry import LineString, Point
 
 
 def graph_from_gdfs(gdf_nodes, gdf_edges, graph_attrs=None, undirected=False):
@@ -29,7 +32,6 @@ def graph_from_gdfs(gdf_nodes, gdf_edges, graph_attrs=None, undirected=False):
     G = nx.MultiDiGraph(**graph_attrs)
 
     # add the nodes then each node's non-null attributes
-    start = time.time()
     G.add_nodes_from(gdf_nodes.index)
     for col in gdf_nodes.columns:
         nx.set_node_attributes(G, name=col, values=gdf_nodes[col].dropna())
@@ -41,13 +43,15 @@ def graph_from_gdfs(gdf_nodes, gdf_edges, graph_attrs=None, undirected=False):
                 for label, val in row.items()
                 if isinstance(val, list) or pd.notnull(val)
             }
-            d_rev = d.copy()
-            d_rev["geometry"] = LineString(d["geometry"].coords[::-1])
-
             G.add_edge(u, v, k, **d)
-            G.add_edge(v, u, k, **d_rev)
+
+            if "geometry" in d.keys():
+                d_rev = d.copy()
+                d_rev["geometry"] = LineString(d["geometry"].coords[::-1])
+                G.add_edge(v, u, k, **d_rev)
+            else:
+                G.add_edge(v, u, k, **d)
     else:
-        start = time.time()
         for (u, v, k), row in gdf_edges.set_index(["u", "v", "key"]).iterrows():
             d = {
                 label: val
@@ -56,17 +60,10 @@ def graph_from_gdfs(gdf_nodes, gdf_edges, graph_attrs=None, undirected=False):
             }
 
             G.add_edge(u, v, k, **d)
-        print(f"time elapsed: {time.time() - start}s")
     return G
 
 
-def graph_from_gdfs_revisited(gdf_nodes, gdf_edges, graph_attrs=None):
-
-    if graph_attrs is None:
-        graph_attrs = {"crs": gdf_edges.crs}
-
-    g = nx.MultiDiGraph(**graph_attrs)
-
+def add_edges_from_df(g, gdf_edges):
     reserved_columns = ["u", "v", "key"]
     attr_col_headings = [c for c in gdf_edges.columns if c not in reserved_columns]
     attribute_data = zip(*[gdf_edges[col] for col in attr_col_headings])
@@ -79,7 +76,25 @@ def graph_from_gdfs_revisited(gdf_nodes, gdf_edges, graph_attrs=None):
 
         g[s][t][key].update(zip(attr_col_headings, attrs))
 
-    for col in ["x", "y", "geometry"]:  # gdf_nodes.columns:
+
+def add_nodes_from_df(g, gdf_nodes):
+
+    gdf_nodes_dict = gdf_nodes.to_dict(orient="index")
+    for n in gdf_nodes_dict:
+        attrs = gdf_nodes_dict[n]
+        g.add_node(n, **attrs)
+
+
+def graph_from_gdfs_revisited(gdf_nodes, gdf_edges, graph_attrs=None):
+
+    if graph_attrs is None:
+        graph_attrs = {"crs": gdf_edges.crs}
+
+    g = nx.MultiDiGraph(**graph_attrs)
+
+    add_edges_from_df(g, gdf_edges)
+
+    for col in ["x", "y", "geometry", "trans_mode"]:  # gdf_nodes.columns:
         nx.set_node_attributes(g, name=col, values=gdf_nodes[col].dropna())
 
     return g

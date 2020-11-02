@@ -8,7 +8,8 @@ import numpy as np
 import osmnx as ox
 import pandas as pd
 
-from mfreight.utils import simplify
+from mfreight.utils import simplify, build_graph
+
 
 GeoDataFrame = TypeVar("geopandas.geodataframe.GeoDataFrame")
 Series = TypeVar("pandas.core.series.Series")
@@ -71,6 +72,22 @@ class RailNet:
             inplace=True,
         )
 
+    def extract_nested_operators(self, rail_edges):
+        cols = [
+            col
+            for col in rail_edges.columns
+            if col[:7] == "RROWNER" or col[:7] == "TRKRGHT"
+        ]
+        for idx, row in rail_edges.iterrows():
+            j = 0
+            for col in cols:
+                if isinstance(row[col], list):
+                    for i in range(len(row[col]) - 1):
+                        rail_edges.loc[idx, "TRKRGHTS" + str(10 + i + j)] = row[col][
+                            i + 1
+                        ]
+                        rail_edges.loc[idx, col] = row[col][0]
+                    j += len(row[col]) - 1
 
     def keep_only_class_one(self, edges):
 
@@ -82,17 +99,21 @@ class RailNet:
         mask_prev = np.array([False] * len(edges))
         for col in rail_operators_col:
             for operator in self.class1_operators:
-                edge_col = edges[col].replace({None: 'None'})
+                edge_col = edges[col].replace({None: "None"})
                 mask = np.array([True if operator in n else False for n in edge_col])
                 mask = mask | mask_prev
                 mask_prev = mask
 
         edges.drop(index=edges[~mask_prev].index, inplace=True)
 
+    def filter_rail_dataset(
+        self, nodes: GeoDataFrame, edges: GeoDataFrame, only_c1
+    ):
 
-    def filter_rail_dataset(self, nodes: GeoDataFrame, edges: GeoDataFrame):
         self.keep_only_valid_usa_rail(edges)
-        self.keep_only_class_one(edges)
+
+        if only_c1:
+            self.keep_only_class_one(edges)
 
         nodes.drop(
             nodes[
@@ -102,7 +123,7 @@ class RailNet:
         )
         nodes.set_index("FRANODEID", drop=False, inplace=True)
 
-    def format_gpdfs(self, nodes: GeoDataFrame, edges: GeoDataFrame):
+    def format_gpdfs(self, nodes: GeoDataFrame, edges: GeoDataFrame, only_c1):
 
         edges.rename(columns={"FRFRANODE": "u", "TOFRANODE": "v"}, inplace=True)
 
@@ -114,7 +135,7 @@ class RailNet:
         nodes["trans_mode"] = self.trans_mode
         nodes["key"] = 0
 
-        self.filter_rail_dataset(nodes, edges)
+        self.filter_rail_dataset(nodes, edges, only_c1)
         self.add_speed_duration(edges)
 
         edges.drop(
@@ -222,21 +243,34 @@ class RailNet:
     def gen_rail_graph(
         self,
         simplified: bool = True,
-        save: bool = False,
-        path: str = "mfreight/multimodal/data/rail_G.plk",
+        save_graph: bool = False,
+        save_nodes_edges=False,
+        path: str = "/../Multimodal/data/rail_G.plk",
         return_gdfs: bool = False,
+        only_c1=True,
     ) -> Graph:
 
         nodes, edges = self.load_BTS()
-        self.format_gpdfs(nodes, edges)
+        self.format_gpdfs(nodes, edges, only_c1)
         self.add_intermodal_nodes(nodes, edges)
-        self.G = ox.graph_from_gdfs(nodes, edges)
+        edges.drop(
+            columns=["OBJECTID", "speed_kmh", "FRAARCID", "DS", "IM_RT_TYPE"],
+            inplace=True,
+        )
+        self.G = build_graph.graph_from_gdfs_revisited(nodes, edges)
 
         if simplified:
             self.simplify_graph(nodes)
+            nodes, edges = ox.graph_to_gdfs(self.G)
+            self.extract_nested_operators(edges)
+            self.G = build_graph.graph_from_gdfs_revisited(nodes, edges)
 
-        if save:
-            nx.write_gpickle(self.G, path)
+        if save_graph:
+            nx.write_gpickle(self.G, self.script_dir + path)
+
+        if save_nodes_edges:
+            nodes.to_csv(self.script_dir + "/../Multimodal/data/rail_nodes.csv")
+            edges.to_csv(self.script_dir + "/../Multimodal/data/rail_edges.csv")
 
         if return_gdfs:
             return self.G, nodes, edges

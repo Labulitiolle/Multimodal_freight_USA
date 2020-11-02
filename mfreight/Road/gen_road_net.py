@@ -4,11 +4,10 @@ from typing import TypeVar
 
 import geopandas as gpd
 import networkx as nx
-import osmnx as ox
 import pandas as pd
 from shapely.geometry import Point
 
-from mfreight.utils import simplify
+from mfreight.utils import simplify, build_graph
 
 GeoDataFrame = TypeVar("geopandas.geodataframe.GeoDataFrame")
 Series = TypeVar("pandas.core.series.Series")
@@ -23,7 +22,6 @@ class RoadNet:
 
     The data used is pulled from the BTS database, it only contains the highway network in the USA.
 
-    #TODO: It will still be necessary to add the price.
     """
 
     def __init__(self, bbox: Polygon = None, graph: Graph = None, kg_co2_per_tkm: float = 0.080513):
@@ -206,21 +204,21 @@ class RoadNet:
     def gen_road_graph(
         self,
         simplified: bool = True,
-        save: bool = False,
-        path: str = "mfreight/multimodal/data/road_G.plk",
+        save_graph: bool = False,
+        path: str = "/../Multimodal/data/road_G.plk",
         return_gdfs: bool = False,
     ) -> Graph:
 
         edges = self.load_BTS()
         nodes, edges = self.format_gdfs(edges)
-        self.G = ox.graph_from_gdfs(nodes, edges)
+        self.G = build_graph.graph_from_gdfs_revisited(nodes, edges)
         self.relabel_nodes(nodes)
 
         if simplified:
             self.simplify_graph()
 
-        if save:
-            nx.write_gpickle(self.G, path)
+        if save_graph:
+            nx.write_gpickle(self.G, self.script_dir + path)
 
         if return_gdfs:
             return self.G, nodes, edges

@@ -1,4 +1,6 @@
 import geopandas as gpd
+import numpy as np
+import pandas as pd
 import pytest
 from shapely.geometry import LineString
 
@@ -96,7 +98,7 @@ def test_gen_intermodal_nodes(gen_formatted_rail_and_road_nodes):
     ]
 
 
-def test_link_road_to_rail(gen_formatted_rail_and_road_nodes, mocker):
+def test_link_road_to_rail(gen_formatted_rail_and_road_nodes):
 
     road_edges = gpd.GeoDataFrame(
         index=[101, 102, 103],

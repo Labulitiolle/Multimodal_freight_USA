@@ -33,8 +33,8 @@ class MergeNets:
     @staticmethod
     def generate_graphs(bbox: Polygon = None) -> tuple:
 
-        G_road = RoadNet(bbox = bbox).gen_road_graph(simplified=True, save=False)
-        G_rail = RailNet(bbox = bbox).gen_rail_graph(simplified=True, save=False)
+        G_road = RoadNet(bbox=bbox).gen_road_graph(simplified=True, save=False)
+        G_rail = RailNet(bbox=bbox).gen_rail_graph(simplified=True, save=False)
 
         return G_road, G_rail
 
@@ -45,7 +45,9 @@ class MergeNets:
 
         return G_road, G_rail
 
-    def map_intermodal_to_road(self, road_nodes: GeoDataFrame, rail_nodes: GeoDataFrame) -> DataFrame:
+    def map_intermodal_to_road(
+        self, road_nodes: GeoDataFrame, rail_nodes: GeoDataFrame
+    ) -> DataFrame:
 
         intermodal_rail_nodes = keep_only_intermodal(rail_nodes)
 
@@ -77,7 +79,9 @@ class MergeNets:
 
         return intermodal_to_road_map
 
-    def gen_intermodal_links(self, intermodal_to_road_map: DataFrame, road_edges: GeoDataFrame) -> DataFrame:
+    def gen_intermodal_links(
+        self, intermodal_to_road_map: DataFrame, road_edges: GeoDataFrame
+    ) -> DataFrame:
 
         intermodal_links = pd.DataFrame(
             index=range(len(intermodal_to_road_map)), columns=road_edges.columns
@@ -96,7 +100,12 @@ class MergeNets:
 
         return intermodal_links
 
-    def gen_intermodal_nodes(self, intermodal_to_road_map: DataFrame, road_nodes: GeoDataFrame, rail_nodes: GeoDataFrame) -> DataFrame:
+    def gen_intermodal_nodes(
+        self,
+        intermodal_to_road_map: DataFrame,
+        road_nodes: GeoDataFrame,
+        rail_nodes: GeoDataFrame,
+    ) -> DataFrame:
 
         intermodal_nodes = pd.DataFrame(
             index=intermodal_to_road_map.index, columns=road_nodes.columns
@@ -108,18 +117,23 @@ class MergeNets:
             x.append(rail_nodes.loc[row.Index, "x"])
             y.append(rail_nodes.loc[row.Index, "y"])
             geometry.append(rail_nodes.loc[row.Index, "geometry"])
-            zip_code.append(rail_nodes.loc[row.Index, "STCYFIPS"])
+            # zip_code.append(rail_nodes.loc[row.Index, "STCYFIPS"])
 
         intermodal_nodes["x"] = x
         intermodal_nodes["y"] = y
         intermodal_nodes["geometry"] = geometry
-        intermodal_nodes["STCYFIPS"] = zip_code
+        # intermodal_nodes["STCYFIPS"] = zip_code
         intermodal_nodes["trans_mode"] = "intermodal"
         intermodal_nodes["key"] = 0
 
         return intermodal_nodes
 
-    def link_road_to_rail(self, road_nodes: GeoDataFrame, rail_nodes: GeoDataFrame, road_edges: GeoDataFrame) -> tuple:
+    def link_road_to_rail(
+        self,
+        road_nodes: GeoDataFrame,
+        rail_nodes: GeoDataFrame,
+        road_edges: GeoDataFrame,
+    ) -> tuple:
 
         intermodal_to_road_map = self.map_intermodal_to_road(road_nodes, rail_nodes)
 
@@ -132,6 +146,23 @@ class MergeNets:
         road_nodes = road_nodes.append(intermodal_nodes)
 
         return road_nodes, road_edges
+
+
+    def build_price_table(self):
+        spot_price = pd.read_csv(
+            self.script_dir + "/data/spot_price.csv",
+            index_col=["Origin State", "Destination State"],
+        )  # mean aggregation
+        contract_price = pd.read_csv(
+            self.script_dir + "/data/contract_price.csv",
+            index_col=["Origin State", "Destination State"],
+        )
+
+        spot_price.fillna(contract_price, inplace=True)
+        spot_price.fillna(method='ffill') # TODO improve padding
+        spot_price = spot_price / 1.61
+
+        return spot_price
 
     def merge_networks(
         self,
@@ -154,19 +185,18 @@ class MergeNets:
             road_nodes, rail_nodes, road_edges
         )
 
-        G_road_w_link = ox.graph_from_gdfs(road_nodes, road_edges)
+        G_road_w_link = build_graph.graph_from_gdfs_revisited(road_nodes, road_edges)
+        self.G_rail = build_graph.graph_from_gdfs_revisited(rail_nodes, rail_edges)
 
         self.G_multimodal = nx.compose(G_road_w_link, self.G_rail)
-        nodes, edges = ox.graph_to_gdfs(self.G_multimodal)
-        # edges = edges[edges.key != 1] TODO There are 12 multi edges, not necessary to be removed
-        edges['key'] = 0
-        self.G_multimodal_u = build_graph.graph_from_gdfs(
-            nodes, edges, undirected=True
+        nodes, edges = ox.graph_to_gdfs(
+            self.G_multimodal, fill_edge_geometry=True
         )
+        # edges = edges[edges.key != 1] TODO There are 12 multi edges, not necessary to be removed
+
+        edges["key"] = 0
+        self.G_multimodal_u = build_graph.graph_from_gdfs(nodes, edges, undirected=True)
 
         if save:
             nx.write_gpickle(self.G_multimodal.to_undirected(), self.script_dir + path)
             nx.write_gpickle(self.G_multimodal_u, self.script_dir + path_u)
-
-
-
