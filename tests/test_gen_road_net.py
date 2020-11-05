@@ -97,20 +97,15 @@ def test_STFIPS_to_speed_map(mocker):
 
     speed_map_kmh = RoadNet().STFIPS_to_speed_map()
 
-    assert list(speed_map_kmh) == [113.0, 105.0]
+    assert list(speed_map_kmh) == [70, 65]
     assert list(speed_map_kmh.index) == [0, 1]
 
 
-def test_add_highway_speed(mocker):
-    mocker.patch(
-        "mfreight.Road.gen_road_net.RoadNet.STFIPS_to_speed_map",
-        return_value=pd.Series({0: 70, 1: 100, 2: 80, 3: 80}),
-    )
-
-    edges = pd.DataFrame({"STFIPS": ["3", "1", "2"]})
+def test_add_highway_speed():
+    edges = pd.DataFrame({"STFIPS": ["5", "1", "12"]})
     RoadNet().add_highway_speed(edges)
 
-    assert list(edges.speed_kmh) == [80, 100, 80]
+    assert list(edges.speed_mph) == [70, 65, 70]
 
 
 def test_add_incident_nodes():
@@ -156,7 +151,7 @@ def test_simplify_graph(gen_nodes_edges_after_reindexing):
 
     assert list(nodes.index) == [1000000000, 1000000002]
     assert list(edges["CO2_eq_kg"]) == [14]
-    assert list(edges["length"]) == [3.1]
+    assert list(edges["MILES"]) == [3.1]
     assert list(edges["duration_h"]) == [2]
 
 
@@ -218,22 +213,22 @@ def test_format_gdfs(mocker):
     edges = gpd.GeoDataFrame(
         {
             "id": [100, 200, 300, 400],
-            "geometry": [LineString(),LineString(),LineString(), None],
-            "speed_kmh": [10, 50, 20,150],
-            "KM": [0.1, 1, 10, 100],
+            "geometry": [LineString(), LineString(), LineString(), None],
+            "speed_mph": [10, 50, 20, 150],
+            "MILES": [0.1, 1, 10, 100],
             "u": [1, 2, 3, 4],
             "v": [2, 3, 4, 5],
             "STATUS": [1, 1, 1, 1],
         },
         crs="EPSG:4326",
     )
-    net = RoadNet(kg_co2_per_tkm = 10)
+    net = RoadNet(kg_co2_per_tmiles=10)
     net.format_gdfs(edges)
+    # print(edges)
 
-    assert net.kg_co2_per_tkm == 10
+    assert net.kg_co2_per_tmiles == 10
     assert "trans_mode" in list(edges.columns)
     assert "key" in list(edges.columns)
-    assert list(edges.length) == [100, 1000, 10000]
+    assert list(edges.MILES) == [0.1, 1, 10]
     assert list(edges.duration_h) == [0.01, 0.02, 0.5]
-    assert list(edges.CO2_eq_kg) == [1,10,100]
-
+    assert list(edges.CO2_eq_kg) == [1, 10, 100]

@@ -124,7 +124,7 @@ def gen_nodes_edges_after_reindexing():
     )
     edges = gpd.GeoDataFrame(
         {
-            "length": {0: 1, 1: 2.1},
+            "MILES": {0: 1, 1: 2.1},
             "CO2_eq_kg": {0: 4, 1: 10},
             "duration_h": {0: 1, 1: 1},
             "key": {0: 0, 1: 0},
@@ -212,7 +212,7 @@ def gen_graph_for_price():
     edges = gpd.GeoDataFrame(
         {
             "trans_mode": {0: "road", 1: "rail", 2: "intermodal_link"},
-            "length": {0: 1000, 1: 1000, 2: 1000},
+            "dist_miles": {0: 10, 1: 100, 2: 1000},
             "key": {0: 0, 1: 0, 2: 0},
             "u": {0: 10000, 1: 10002, 2: 10003},
             "v": {0: 10002, 1: 10003, 2: 10000},
@@ -240,7 +240,7 @@ def gen_graph_for_details():
     edges = gpd.GeoDataFrame(
         {
             "trans_mode": {0: "road", 1: "rail", 2: "intermodal_link", 3: "rail"},
-            "length": {0: 1000, 1: 1000, 2: 1000, 3: 2000},
+            "dist_miles": {0: 1000, 1: 1000, 2: 1000, 3: 2000},
             "key": {0: 0, 1: 0, 2: 0, 3: 0},
             "u": {0: 10000, 1: 10002, 2: 10003, 3: 10003},
             "v": {0: 10002, 1: 10003, 2: 10000, 3: 10004},

@@ -9,18 +9,19 @@ import networkx as nx
 import numpy as np
 import osmnx as ox
 import pandas as pd
+import plotly.graph_objects as go
 from geopy.distance import great_circle
 from geopy.geocoders import Nominatim
 from shapely import wkt
-from shapely.geometry import LineString, Point
 
-from mfreight.utils import astar_revisited, build_graph, constants, folium_revisited
+from mfreight.utils import astar_revisited, constants, folium_revisited
 
 Polygon = TypeVar("shapely.geometry.polygon.Polygon")
 Graph = TypeVar("networkx.classes.multigraph.MultiGraph")
 GeoDataFrame = TypeVar("geopandas.geodataframe.GeoDataFrame")
 DataFrame = TypeVar("pandas.core.frame.DataFrame")
 NDArray = TypeVar("numpy.ndarray")
+PlotlyFig = TypeVar("plotly.graph_objs._figure.Figure")
 
 
 class MultimodalNet:
@@ -29,7 +30,6 @@ class MultimodalNet:
         path_u: str = "mfreight/Multimodal/data/multimodal_G_u.plk",
     ):
         self.G_multimodal_u = nx.read_gpickle(path_u)
-        print('length:', len(self.G_multimodal_u))
         self.script_dir = os.path.dirname(__file__)
         self.class1_operators = ["BNSF", "UP", "CN", "CPRS", "KCS", "CSXT", "NS"]
 
@@ -41,7 +41,7 @@ class MultimodalNet:
         )
 
     def load_and_format_csv(self, path: str) -> GeoDataFrame:
-        df = pd.read_csv(path, index_col=0)
+        df = pd.read_csv(path, index_col=0, low_memory=False)
         df["geometry"] = df["geometry"].apply(wkt.loads)
         df.columns = [
             tuple(re.findall(r"(\w+)", a)[0]) if a[0] == "(" else a for a in df.columns
@@ -49,19 +49,18 @@ class MultimodalNet:
         return df
 
     def get_rail_owners(self) -> List[str]:
-        operators = np.array([])
+
         rail_owners_cols = [
             col
             for col in self.rail_edges.columns
             if col[:7] == "RROWNER" or col[:7] == "TRKRGHT"
         ]
-        for col in rail_owners_cols:
-            mask_is_str = [
-                True if isinstance(n, str) else False for n in self.rail_edges[col]
-            ]
-            operators = pd.unique(
-                self.rail_edges.loc[mask_is_str, rail_owners_cols].values.ravel("K")
-            )
+
+        operators = pd.unique(
+            self.rail_edges.loc[:, rail_owners_cols].values.ravel("K")
+        )
+
+        operators = [n for n in operators if str(n) != "nan"]
 
         return list(set(self.class1_operators) & set(pd.unique(operators)))
 
@@ -73,11 +72,10 @@ class MultimodalNet:
     def chose_operator_in_df(
         self, operators: list
     ) -> Tuple[GeoDataFrame, GeoDataFrame]:
-        start = time.time()
+
         rail_edges = self.rail_edges.copy()
         rail_nodes = self.rail_nodes.copy()
-        print(f"22Elapsed time: {time.time()-start}")
-        start = time.time()
+
         rail_edges.fillna(value="None", inplace=True)
         rail_owners_cols = [col for col in rail_edges.columns if col[:7] == "RROWNER"]
         rail_rights_col = [col for col in rail_edges.columns if col[:7] == "TRKRGHT"]
@@ -101,19 +99,17 @@ class MultimodalNet:
 
         nodes_to_remove = self.remove_unnecessary_nodes(egdes_to_keep, rail_nodes)
 
-        print(f"33Elapsed time: {time.time() - start}")
         return edges_to_remove, nodes_to_remove
 
     def chose_operator_in_graph(self, operators: List[str] = ["CSXT"]) -> GeoDataFrame:
 
-        start = time.time()
+
         edges_to_remove, nodes_to_remove = self.chose_operator_in_df(operators)
 
         to_remove = zip(edges_to_remove.u, edges_to_remove.v)
 
         self.G_multimodal_u.remove_edges_from(to_remove)
 
-        print(f"44Elapsed time: {time.time() - start}")
         return edges_to_remove, nodes_to_remove
 
     def extract_state(self, position: Tuple[float, float]):
@@ -132,12 +128,12 @@ class MultimodalNet:
 
     def set_price_to_graph(self):
 
-        spot_price = self.build_price_table()
+        spot_price = self.load_price_table()
 
-        price_idx = spot_price.index.to_flat_index()
+        price_idx = spot_price.index
 
         for u, v, d in self.G_multimodal_u.edges(data=True):
-            prices_for_segment = d["length"] * spot_price
+            prices_for_segment = d["dist_miles"] * spot_price
 
             if d["trans_mode"] == "road":
                 self.G_multimodal_u[u][v][0].update(
@@ -153,29 +149,35 @@ class MultimodalNet:
                     zip(price_idx, prices_for_segment["Intermodal"])
                 )
 
-    def build_price_table(self):
-        spot_price = pd.read_csv(
-            self.script_dir + "/data/spot_price.csv",
-            index_col=["Origin State", "Destination State"],
+        return price_idx
+
+    def load_price_table(self):
+        return pd.read_csv(
+            self.script_dir + "/data/pricing.csv",
+            index_col=0,
         )  # mean aggregation
-        contract_price = pd.read_csv(
-            self.script_dir + "/data/contract_price.csv",
-            index_col=["Origin State", "Destination State"],
-        )
 
-        spot_price.fillna(contract_price, inplace=True)
-        spot_price.fillna(method="ffill")  # TODO improve padding
-        spot_price = spot_price / 1.61
+    def get_price_target(self, departure, arrival, price_idx):
+        orig_state = self.extract_state(departure)
+        dest_state = self.extract_state(arrival)
 
-        default_price = pd.DataFrame(
-            index=[("default", "default")],
-            columns=["Intermodal", "Truckload"],
-            data=[[0.837, 1.044]],
-        )
+        if (orig_state, dest_state) in price_idx:
+            price_target = str((orig_state, dest_state))
 
-        spot_price = spot_price.append(default_price)
+        else:
+            distance = great_circle(departure, arrival).miles
+            if distance < 890:
+                price_target = "range1"
+            elif 890 <= distance < 1435:
+                price_target = "range2"
+            elif 1435 <= distance < 1980:
+                price_target = "range3"
+            elif 1980 <= distance < 2525:
+                price_target = "range4"
+            elif 2525 <= distance:
+                price_target = "range5"
 
-        return spot_price
+        return price_target
 
     @staticmethod
     def _get_weight(weight: str) -> Callable[[str], Any]:
@@ -212,7 +214,7 @@ class MultimodalNet:
         if G is None:
             G = self.G_multimodal_u
         # The first row displays the intermodal links
-        weights = ["trans_mode", "price", "CO2_eq_kg", "duration_h", "length"]
+        weights = ["trans_mode", "price", "CO2_eq_kg", "duration_h", "dist_miles"]
         route_detail = pd.DataFrame(index=range(len(path) - 1), columns=weights)
 
         for w in weights:
@@ -233,12 +235,12 @@ class MultimodalNet:
         else:
             route_summary = pd.pivot_table(
                 route_detail,
-                values=["price", "CO2_eq_kg", "duration_h", "length"],
+                values=["price", "CO2_eq_kg", "duration_h", "dist_miles"],
                 index=["trans_mode"],
                 aggfunc=np.sum,
             )
-            route_summary["length"] = route_summary["length"] / 1000
-            route_summary.rename(columns={"length": "distance_km"}, inplace=True)
+
+            route_summary.rename(columns={"dist_miles": "distance_miles"}, inplace=True)
             route_summary = route_summary.round(2)
 
             if show_breakdown_by_mode:
@@ -318,20 +320,19 @@ class MultimodalNet:
             ax=ax,
         )
 
-    def plot_route(
+    def get_shortest_path(
         self,
         orig: Tuple[float, float],
         dest: Tuple[float, float],
         target_weight: str = "CO2_eq_kg",
         G: Graph = None,
-        orig_dest_size: int = 100,
-        algo: str = "astar",
-        folium: bool = False,
     ):
+
+        # start = time.time()
         if G is None:
             G = self.G_multimodal_u
 
-        start = time.time()
+
         node_orig, dist_orig = ox.get_nearest_node(
             G, orig, method="haversine", return_dist=True
         )
@@ -339,79 +340,24 @@ class MultimodalNet:
             G, dest, method="haversine", return_dist=True
         )
 
-        print(f"nearest_node Elapsed time: {time.time() - start}")
-        if algo == "astar":
-            start = time.time()
+        shortest_path_nodes = nx.astar_path(
+            G, node_orig, node_dest, weight=target_weight
+        )
+        # print(f"get_shortest_path Elapsed time: {time.time() - start}")
 
-            weight_path = nx.astar_path_length(
-                G, node_orig, node_dest, weight=target_weight
-            )
-            shortest_path_nodes = nx.astar_path(
-                G, node_orig, node_dest, weight=target_weight
-            )
-            print(f"A* Elapsed time: {time.time() - start}")
+        return shortest_path_nodes
 
-        elif algo == "dijkstra":
+    def plot_route(self, path, G=None):
 
-            weight_path = nx.dijkstra_path_length(
-                G, node_orig, node_dest, weight=target_weight
-            )
-            shortest_path_nodes = nx.dijkstra_path(
-                G, node_orig, node_dest, weight=target_weight
-            )
+        if G is None:
+            G = self.G_multimodal_u
 
-        else:
-            raise AssertionError(
-                f'The parameter "algo" can either be "astar" or "dijkstra", not {algo}'
-            )
-
-        if folium:
-            return (
-                folium_revisited.plot_route_folium(
-                    G,
-                    shortest_path_nodes,
-                    route_width=4,
-                    route_opacity=0.9,
-                ),
-                shortest_path_nodes,
-            )
-
-        else:
-            weight = self._get_weight("length")
-            distance_highway = sum(
-                [
-                    weight(G[u][v][0])
-                    for u, v in zip(shortest_path_nodes[:-1], shortest_path_nodes[1:])
-                ]
-            )
-
-            dist_non_highway = dist_orig + dist_dest
-
-            total_dist = dist_non_highway + distance_highway
-
-            fig, ax = plt.subplots(figsize=(15, 7))
-            ax.scatter(orig[1], orig[0], marker="x", s=orig_dest_size, zorder=5)
-            ax.scatter(dest[1], dest[0], marker="x", s=orig_dest_size, zorder=10)
-            ox.plot_graph(
-                G,
-                edge_color="#bfbfbf",
-                node_color="#595959",
-                bgcolor="w",
-                ax=ax,
-                show=False,
-            )
-            ox.plot_graph_route(
-                G,
-                shortest_path_nodes,
-                route_color="g",
-                route_linewidth=4,
-                route_alpha=0.9,
-                orig_dest_size=100,
-                ax=ax,
-                show=True,
-            )
-
-            self.print_graph_info(total_dist, weight_path, target_weight)
+        return folium_revisited.plot_route_folium(
+            G,
+            path,
+            route_width=4,
+            route_opacity=0.9,
+        )
 
     @staticmethod
     def print_graph_info(
@@ -420,35 +366,32 @@ class MultimodalNet:
         target_weight: str = "CO2_eq_kg",
     ):
 
-        if target_weight == "length":
+        if target_weight == "dist_miles":
 
-            print(f"Distance {total_dist / 1000} [km]")
+            print(f"Distance {total_dist} [miles]")
 
         elif target_weight == "duration_h":
             if weight_path > 1:
-                print(f"Duration {weight_path} [h] \nDistance {total_dist / 1000} [km]")
+                print(f"Duration {weight_path} [h] \nDistance {total_dist} [miles]")
 
             else:
                 print(
-                    f"Duration {weight_path * 60} [min] \nDistance {total_dist / 1000} [km]"
+                    f"Duration {weight_path * 60} [min] \nDistance {total_dist} [miles]"
                 )
 
         elif target_weight == "CO2_eq_kg":
             print(
-                f"{str(target_weight)}: {weight_path} \nDistance {total_dist / 1000} [km]"
+                f"{str(target_weight)}: {weight_path} \nDistance {total_dist} [miles]"
             )
 
         else:
             print(f"{str(target_weight)}: {target_weight}")
 
     def heuristic_func(self, u: int, v: int) -> float:
-        return (
-            great_circle(
-                (self.G_multimodal_u.nodes[u]["y"], self.G_multimodal_u.nodes[u]["x"]),
-                (self.G_multimodal_u.nodes[v]["y"], self.G_multimodal_u.nodes[v]["x"]),
-            ).km
-            * 1000
-        )
+        return great_circle(
+            (self.G_multimodal_u.nodes[u]["y"], self.G_multimodal_u.nodes[u]["x"]),
+            (self.G_multimodal_u.nodes[v]["y"], self.G_multimodal_u.nodes[v]["x"]),
+        ).miles
 
     def plot_astar_exploration(
         self,
@@ -469,7 +412,7 @@ class MultimodalNet:
         )
 
         dist_path = nx.astar_path_length(
-            self.G_multimodal_u, node_orig, node_dest, weight="length"
+            self.G_multimodal_u, node_orig, node_dest, weight="dist_miles"
         )
         weight_path = nx.astar_path_length(
             self.G_multimodal_u, node_orig, node_dest, weight=target_weight
@@ -522,3 +465,122 @@ class MultimodalNet:
         )
 
         self.print_graph_info(total_dist, weight_path, target_weight)
+
+    def chosen_path_mode(self, route_details):
+        if "intermodal_link" in route_details.index:
+            return "Multimodal"
+        else:
+            return "Truckload"
+
+    def compute_all_paths(
+        self,
+        price_target: str,
+        departure: Tuple[float, float],
+        arrival: Tuple[float, float],
+    ) -> DataFrame:
+
+        summary = pd.DataFrame()
+        paths = []
+        targets = ["CO2_eq_kg", "duration_h"]
+        for target in targets:
+
+            path = self.get_shortest_path(departure, arrival, target_weight=target)
+            paths.append(path)
+
+            summary = summary.append(
+                self.route_detail_from_graph(
+                    path, show_breakdown_by_mode=False, price_target=price_target
+                )
+            )
+
+        if summary.iloc[0, 0] == summary.iloc[1, 0]:  # No multimodal route
+            summary = summary.iloc[0, :].set_index(pd.Index(["Truckload"]))
+        else:
+            summary.set_index(pd.Index(["Multimodal", "Truckload"]), inplace=True)
+
+        return round(summary.drop(columns={"distance_miles"}), 1)
+
+    def normalize_summary(self, summary: DataFrame) -> DataFrame:
+
+        norm_summary = summary.copy()
+        for target in summary.level_0.unique():
+            norm_summary.loc[norm_summary.level_0 == target, "vals"] = (
+                summary[summary.level_0 == target].vals
+                / summary[summary.level_0 == target].vals.max()
+            )
+        return norm_summary
+
+    def plot_route_summary(self, summary: DataFrame, chosen: str) -> PlotlyFig:
+
+        summary.rename(
+            columns={
+                "price": r"Price [$]  ",
+                "duration_h": r"Duration [h]  ",
+                "CO2_eq_kg": r"CO2 emissions [kg_eq]  ",
+            },
+            inplace=True,
+        )
+
+        summary = (
+            summary.transpose()
+            .stack()
+            .reset_index(inplace=False)
+            .rename(columns={0: "vals"})
+        )
+
+        norm_summary = self.normalize_summary(summary)
+
+        fig = go.Figure()
+        s_t = summary[summary.level_1 == "Truckload"]
+        s_t_n = norm_summary[norm_summary.level_1 == "Truckload"]
+        s_m = summary[summary.level_1 == "Multimodal"]
+        s_m_n = norm_summary[norm_summary.level_1 == "Multimodal"]
+        if chosen == "Truckload":
+            color_t = "rgb(48, 36, 216)"
+            color_m = "rgb(170, 167, 209)"
+            t_name = "Chosen(Truck)"
+            m_name = "Multimodal"
+        else:
+            color_m = "rgb(48, 36, 216)"
+            color_t = "rgb(170, 167, 209)"
+            t_name = "Truck"
+            m_name = "Chosen(Multimodal)"
+
+        fig.add_trace(
+            go.Bar(
+                x=s_t_n.vals.values,
+                y=s_t.level_0.values,
+                textposition="auto",
+                text=round(s_t.vals, 1).values,
+                orientation="h",
+                name=t_name,
+                marker_color=color_t,
+            )
+        )
+        fig.add_trace(
+            go.Bar(
+                x=s_m_n.vals.values,
+                y=s_m.level_0.values,
+                textposition="auto",
+                text=round(s_m.vals, 1).values,
+                orientation="h",
+                name=m_name,
+                marker_color=color_m,
+            )
+        )
+
+        fig.update_layout(
+            width=600,
+            height=200,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+
+        fig.update_layout(
+            xaxis={"showticklabels": False},
+            yaxis={"showticklabels": True, "tickfont": {"color": "rgb(128, 128, 128)"}},
+            legend={"font": {"color": "rgb(128, 128, 128)"}},
+            margin=dict(l=0, r=0, b=0, t=0),
+        )
+
+        return fig

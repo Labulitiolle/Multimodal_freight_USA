@@ -213,7 +213,7 @@ def _is_simplified(G):
     return "simplified" in G.graph and G.graph["simplified"]
 
 
-def simplify_graph(G, strict=True, remove_rings=True, attributes_to_sum=['length'], nodes_to_keep=None):
+def simplify_graph(G, strict=True, remove_rings=True, attributes_to_sum=['MILES'], nodes_to_keep=None):
     """
     Simplify a graph's topology by removing interstitial nodes.
 
@@ -577,6 +577,6 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
                 H.edges[u, v, k]["geometry"] = new_geom
 
                 # update the edge length attribute, given the new geometry
-                H.edges[u, v, k]["length"] = new_geom.length
+                H.edges[u, v, k]["MILES"] = new_geom.MILES
 
     return H

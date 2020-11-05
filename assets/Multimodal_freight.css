@@ -56,15 +56,12 @@ body {
   justify-content: space-between;
 }
 
-#graph-container {
+#feature-selector {
   display: flex;
-  flex-direction: row;
-  justify-content: center;
+  justify-content: space-around;
 }
 
-#select-metric-outer {
-  width: 45%;
-}
+
 
 #upper-left > div > label {
   font-weight: bold;
@@ -106,6 +103,11 @@ span.Select-clear-zone {
 
 
 #table-upper > p, #table-lower > p {
+  font-weight: bold;
+  margin: 20px 0px;
+}
+
+#graph-upper > p, #graph-lower > p {
   font-weight: bold;
   margin: 20px 0px;
 }

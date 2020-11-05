@@ -19,7 +19,7 @@ Graph = TypeVar("networkx.classes.multigraph.MultiGraph")
 
 class RailNet:
     """
-    Load dataset, add the intermodal facilities, compute attributes (length, CO2_eq_kg, duration_h)
+    Load dataset, add the intermodal facilities, compute attributes (MILES, CO2_eq_kg, duration_h)
     and generate the rail network as a graph.
 
     """
@@ -28,19 +28,19 @@ class RailNet:
         self,
         bbox: Polygon = None,
         graph: Graph = None,
-        kg_co2_per_tkm: float = 0.0195254,
+        kg_co2_per_tmiles: float = 0.01213,
     ):
         self.trans_mode = "rail"
-        self.kg_co2_per_tkm = kg_co2_per_tkm
+        self.kg_co2_per_tmiles = kg_co2_per_tmiles
         self.track_to_speed_map = {
-            0: 10,
-            1: 16,
-            2: 40,
-            3: 64,
-            4: 97,
-            5: 130,
-            6: 180,
-            13: 97,
+            0: 8,
+            1: 10,
+            2: 25,
+            3: 40,
+            4: 60,
+            5: 80,
+            6: 110,
+            13: 60,
             None: 10,
         }
         self.G = graph
@@ -107,13 +107,12 @@ class RailNet:
         edges.drop(index=edges[~mask_prev].index, inplace=True)
 
     def filter_rail_dataset(
-        self, nodes: GeoDataFrame, edges: GeoDataFrame, only_c1
+        self, nodes: GeoDataFrame, edges: GeoDataFrame
     ):
 
         self.keep_only_valid_usa_rail(edges)
 
-        if only_c1:
-            self.keep_only_class_one(edges)
+        self.keep_only_class_one(edges)
 
         nodes.drop(
             nodes[
@@ -123,19 +122,18 @@ class RailNet:
         )
         nodes.set_index("FRANODEID", drop=False, inplace=True)
 
-    def format_gpdfs(self, nodes: GeoDataFrame, edges: GeoDataFrame, only_c1):
+    def format_gpdfs(self, nodes: GeoDataFrame, edges: GeoDataFrame):
 
         edges.rename(columns={"FRFRANODE": "u", "TOFRANODE": "v"}, inplace=True)
 
         edges["trans_mode"] = self.trans_mode
-        edges["length"] = edges["KM"] * 1000
-        edges["CO2_eq_kg"] = pd.eval("edges.KM * self.kg_co2_per_tkm")
+        edges["CO2_eq_kg"] = pd.eval("edges.MILES * self.kg_co2_per_tmiles")
         edges["key"] = 0
 
         nodes["trans_mode"] = self.trans_mode
         nodes["key"] = 0
 
-        self.filter_rail_dataset(nodes, edges, only_c1)
+        self.filter_rail_dataset(nodes, edges)
         self.add_speed_duration(edges)
 
         edges.drop(
@@ -148,7 +146,6 @@ class RailNet:
                 "FRAREGION",
                 "SUBDIV",
                 "CARDDIRECT",
-                "MILES",
                 "KM",
                 "ShapeSTLen",
                 "geometry",
@@ -173,8 +170,8 @@ class RailNet:
         self.add_x_y_pos(nodes)
 
     def add_speed_duration(self, edges: GeoDataFrame):
-        edges["speed_kmh"] = edges.TRACKS.replace(self.track_to_speed_map)
-        edges["duration_h"] = pd.eval("edges.KM / edges.speed_kmh")
+        edges["speed_mph"] = edges.TRACKS.replace(self.track_to_speed_map)
+        edges["duration_h"] = pd.eval("edges.MILES / edges.speed_mph")
 
     def add_x_y_pos(self, gdf: GeoDataFrame):
 
@@ -232,7 +229,7 @@ class RailNet:
 
     def simplify_graph(self, nodes: GeoDataFrame):
         nodes_to_keep = list(nodes[nodes.index < 200].index)
-        attributes_to_sum = ["length", "CO2_eq_kg", "duration_h"]
+        attributes_to_sum = ["MILES", "CO2_eq_kg", "duration_h"]
         self.G = simplify.simplify_graph(
             self.G, attributes_to_sum=attributes_to_sum, nodes_to_keep=nodes_to_keep
         )
@@ -246,15 +243,14 @@ class RailNet:
         save_graph: bool = False,
         save_nodes_edges=False,
         path: str = "/../Multimodal/data/rail_G.plk",
-        return_gdfs: bool = False,
-        only_c1=True,
+        return_gdfs: bool = False
     ) -> Graph:
 
         nodes, edges = self.load_BTS()
-        self.format_gpdfs(nodes, edges, only_c1)
+        self.format_gpdfs(nodes, edges)
         self.add_intermodal_nodes(nodes, edges)
         edges.drop(
-            columns=["OBJECTID", "speed_kmh", "FRAARCID", "DS", "IM_RT_TYPE"],
+            columns=["OBJECTID", "speed_mph", "FRAARCID", "DS", "IM_RT_TYPE"],
             inplace=True,
         )
         self.G = build_graph.graph_from_gdfs_revisited(nodes, edges)

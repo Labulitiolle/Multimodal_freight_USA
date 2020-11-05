@@ -1,5 +1,5 @@
-import numpy as np
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -20,7 +20,8 @@ def test_get_rail_owners(mocker):
         ),
     )
     rail_owners = MultimodalNet().get_rail_owners()
-    assert list(rail_owners) == ["CSXT", "NS"]
+    assert "CSXT" in list(rail_owners)
+    assert "NS" in list(rail_owners)
 
 
 def test_chose_operator_in_df(mocker):
@@ -72,13 +73,17 @@ def test_chose_operator_in_graph(
     MultimodalNet().chose_operator_in_graph(["CN", "NS"])
 
     assert len(Net.G_multimodal_u) == 7
-    assert list(Net.G_multimodal_u.edges) == [(1, 2, 0), (4, 5, 0), (5, 6, 0)] #Road is not removed
+    assert list(Net.G_multimodal_u.edges) == [
+        (1, 2, 0),
+        (4, 5, 0),
+        (5, 6, 0),
+    ]  # Road is not removed
 
 
 def test_extract_state(mocker):
     mocker.patch(
         "geopy.geocoders.Nominatim",
-        return_value="Florida, United States of America",  # TODO
+        return_value="Florida, United States of America",
     )
 
     state = Net.extract_state((30.439440, -85.057166))
@@ -86,48 +91,32 @@ def test_extract_state(mocker):
     assert state == "FL"
 
 
-def test_set_price_to_graph(mocker, gen_graph_for_operator_choice):
+testdata = [("AR", "CA", "('AR', 'CA')"), ("FL", "FL", "range1")]
+
+
+@pytest.mark.parametrize("state_1, state_2, expected_target_price", testdata)
+def test_get_price_target(mocker, state_1, state_2, expected_target_price):
     mocker.patch(
-        "MultimodalNet.G_multimodal_u",  # TODO
-        return_value=gen_graph_for_operator_choice,
+        "mfreight.Multimodal.graph_utils.MultimodalNet.extract_state",
+        side_effect=[state_1, state_2],
     )
 
-
-# @pytest.mark.parametrize(
-#     "orig_dest, expected_intermodal_price, expected_truckload_price",
-#     testdata_set_price,
-# )
-# def test_get_price(
-#     orig_dest, expected_intermodal_price, expected_truckload_price, mocker
-# ):
-#     mocker.patch(
-#         "mfreight.Multimodal.graph_utils.MultimodalNet.extract_state",
-#         side_effect=orig_dest,
-#     )
-#     intermodal_price, truckload_price = MultimodalNet().get_price((1, 2), (2, 3))
-#
-#     assert intermodal_price == expected_intermodal_price
-#     assert truckload_price == expected_truckload_price
+    price_target = Net.get_price_target((1, 1), (2, 2), pd.Index([("AR", "CA")]))
+    assert expected_target_price == price_target
 
 
-# def test_set_price_to_edges(mocker):
-#     mocker.patch(
-#         "osmnx.graph_to_gdfs",
-#         return_value=(
-#             pd.DataFrame([]),
-#             pd.DataFrame(
-#                 {
-#                     "trans_mode": ["rail", "road", "intermodal_link"],
-#                     "length": [1000, 1000, 1000],
-#                 }
-#             ),
-#         ),
-#     )
-#
-#     Net = MultimodalNet()
-#     Net.set_price_to_edges(intermodal_price=1, truckload_price=2)
-#
-#     assert list(Net.edges.price) == [1, 2, 1.24]
+def test_set_price_to_graph(mocker, gen_graph_for_price):
+    mocker.patch(
+        "networkx.read_gpickle",
+        return_value=gen_graph_for_price,
+    )
+    Net = MultimodalNet()
+    Net.set_price_to_graph()
+
+    assert round(Net.G_multimodal_u[10000][10002][0]["('AR', 'CA')"], 2) == 18.90
+    assert round(Net.G_multimodal_u[10000][10002][0]["range1"], 2) == 19.81
+    assert round(Net.G_multimodal_u[10002][10003][0]["('AR', 'CA')"], 2) == 155.18
+    assert round(Net.G_multimodal_u[10003][10000][0]["('AR', 'CA')"], 2) == 1551.85
 
 
 def test_route_detail_from_graph(mocker, gen_graph_for_details):
@@ -146,10 +135,10 @@ def test_route_detail_from_graph(mocker, gen_graph_for_details):
     )
 
     assert list(route_summary.index) == ["rail", "road", "Total"]
-    assert list(route_summary.distance_km) == [3, 1, 4]
+    assert list(route_summary.distance_miles) == [3000, 1000, 4000]
     assert list(route_summary.columns) == [
         "CO2_eq_kg",
+        "distance_miles",
         "duration_h",
-        "distance_km",
         "price",
     ]

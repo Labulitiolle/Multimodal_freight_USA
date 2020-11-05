@@ -17,16 +17,21 @@ Graph = TypeVar("networkx.classes.multigraph.MultiGraph")
 
 class RoadNet:
     """
-    Load datasets, compute attributes (length, CO2_eq_kg, speed_kmh, duration_h)
+    Load datasets, compute attributes (MILES, CO2_eq_kg, speed_mph, duration_h)
     and generate the road network as a graph.
 
     The data used is pulled from the BTS database, it only contains the highway network in the USA.
 
     """
 
-    def __init__(self, bbox: Polygon = None, graph: Graph = None, kg_co2_per_tkm: float = 0.080513):
+    def __init__(
+        self,
+        bbox: Polygon = None,
+        graph: Graph = None,
+        kg_co2_per_tmiles: float = 0.05001,
+    ):
         self.trans_mode = "road"
-        self.kg_co2_per_tkm = kg_co2_per_tkm
+        self.kg_co2_per_tmiles = kg_co2_per_tmiles
         self.G = graph
         self.script_dir = os.path.dirname(__file__)
         self.bbox = bbox
@@ -70,7 +75,8 @@ class RoadNet:
         ].str.extract("([a-zA-Z\s]+)")
         return speed_table
 
-    def STFIPS_to_speed_map(self):
+    def STFIPS_to_speed_map(self, save: bool = False):
+
         state_to_STFIPS_map = self.map_state_to_STFIPS()
         speed_table = self.get_speed_data()
 
@@ -93,12 +99,23 @@ class RoadNet:
 
         speed_map.set_index("STFIPS code", drop=True, inplace=True)
 
-        speed_map_kmh = round(speed_map * 1.609344, 0).squeeze()
-        return speed_map_kmh
+        speed_map_mph = speed_map.squeeze()
 
-    def add_highway_speed(self, edges):
-        speed_map_kmh = self.STFIPS_to_speed_map()
-        edges["speed_kmh"] = edges["STFIPS"].astype("int").replace(speed_map_kmh)
+        if save:
+            speed_map_mph.to_csv(self.script_dir + "/data/speed_map_mph.csv")
+
+        return speed_map_mph
+
+    def add_highway_speed(self, edges, load_from_local_table: bool = True):
+        if load_from_local_table:
+            speed_map_mph_df = pd.read_csv(
+                self.script_dir + "/data/speed_map_mph.csv", index_col=0
+            )
+            speed_map_mph = speed_map_mph_df.squeeze()
+        else:
+            speed_map_mph = self.STFIPS_to_speed_map()
+
+        edges["speed_mph"] = edges["STFIPS"].astype("int").replace(speed_map_mph)
 
     def add_incident_nodes(self, edges):
 
@@ -128,25 +145,24 @@ class RoadNet:
         self.add_incident_nodes(edges)
         self.add_highway_speed(edges)
         edges["trans_mode"] = self.trans_mode
-        edges["length"] = edges["KM"] * 1000
-        edges["duration_h"] = pd.eval("edges.KM / edges.speed_kmh")
-        edges["CO2_eq_kg"] = pd.eval("edges.KM * self.kg_co2_per_tkm")
+        edges["duration_h"] = pd.eval("edges.MILES / edges.speed_mph")
+        edges["CO2_eq_kg"] = pd.eval("edges.MILES * self.kg_co2_per_tmiles")
         edges["key"] = 0
 
         nodes = self.gen_nodes_gdfs(edges)
-        nodes["key"] = 0
+
         edges.drop(
             edges.columns.difference(
                 [
                     "id",
-                    "length",
+                    "MILES",
                     "duration_h",
                     "CO2_eq_kg",
                     "u",
                     "v",
                     "STATUS",
                     "trans_mode",
-                    "key"
+                    "key",
                 ]
             ),
             axis=1,
@@ -196,7 +212,7 @@ class RoadNet:
         self.G = self.G.subgraph(largest_comp_nodes).copy()
 
     def simplify_graph(self):
-        attributes_to_sum = ["length", "CO2_eq_kg", "duration_h"]
+        attributes_to_sum = ["MILES", "CO2_eq_kg", "duration_h"]
         self.G = simplify.simplify_graph(self.G, attributes_to_sum=attributes_to_sum)
         self.G = self.G.to_undirected()
         self.keep_largest_component()

@@ -21,10 +21,12 @@ def keep_only_intermodal(nodes: GeoDataFrame) -> GeoDataFrame:
 
 
 class MergeNets:
-    def __init__(self, kg_co2_per_tkm: float = 0.080513, G_multimodal_u: Graph = None):
+    def __init__(
+        self, kg_co2_per_tmiles: float = 0.05001, G_multimodal_u: Graph = None
+    ):
 
         self.script_dir = os.path.dirname(__file__)
-        self.kg_co2_per_tkm = kg_co2_per_tkm
+        self.kg_co2_per_tmiles = kg_co2_per_tmiles
 
         self.G_road, self.G_rail = None, None
         self.G_multimodal = None
@@ -68,8 +70,7 @@ class MergeNets:
                             road_nodes.loc[dist.idxmin(), "y"],
                             road_nodes.loc[dist.idxmin(), "x"],
                         ),
-                    ).km
-                    * 1000,
+                    ).miles,
                     2,
                 )
             )
@@ -89,11 +90,11 @@ class MergeNets:
 
         intermodal_links["u"] = intermodal_to_road_map.road_idx.values
         intermodal_links["v"] = intermodal_to_road_map.index.values
-        intermodal_links["length"] = intermodal_to_road_map.dist.values
+        intermodal_links["MILES"] = intermodal_to_road_map.dist.values
         intermodal_links["speed_kmh"] = 10  # DEFAULT
         intermodal_links["duration_h"] = 2  # TODO refine default value
         intermodal_links["CO2_eq_kg"] = (
-            intermodal_links["length"] / 1000 * self.kg_co2_per_tkm
+            intermodal_links["MILES"] * self.kg_co2_per_tmiles
         )
         intermodal_links["key"] = 0
         intermodal_links["trans_mode"] = "intermodal_link"
@@ -147,7 +148,6 @@ class MergeNets:
 
         return road_nodes, road_edges
 
-
     def build_price_table(self):
         spot_price = pd.read_csv(
             self.script_dir + "/data/spot_price.csv",
@@ -159,7 +159,7 @@ class MergeNets:
         )
 
         spot_price.fillna(contract_price, inplace=True)
-        spot_price.fillna(method='ffill') # TODO improve padding
+        spot_price.fillna(method="ffill")  # TODO improve padding
         spot_price = spot_price / 1.61
 
         return spot_price
@@ -189,9 +189,8 @@ class MergeNets:
         self.G_rail = build_graph.graph_from_gdfs_revisited(rail_nodes, rail_edges)
 
         self.G_multimodal = nx.compose(G_road_w_link, self.G_rail)
-        nodes, edges = ox.graph_to_gdfs(
-            self.G_multimodal, fill_edge_geometry=True
-        )
+        nodes, edges = ox.graph_to_gdfs(self.G_multimodal, fill_edge_geometry=True)
+        edges.rename(columns={"MILES": "dist_miles"}, inplace=True)
         # edges = edges[edges.key != 1] TODO There are 12 multi edges, not necessary to be removed
 
         edges["key"] = 0

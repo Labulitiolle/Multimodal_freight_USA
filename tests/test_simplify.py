@@ -18,7 +18,7 @@ def test_simpify():
     edges = gpd.GeoDataFrame(
         {
             "trans_mode": ["rail", "rail", "rail", "rail", "rail", "rail"],
-            "length": [1, 1, 1, 1, 1, 1],
+            "MILES": [1, 1, 1, 1, 1, 1],
             "RROWNER1": ["CSXT", "AGR", "CSXT", "CN", "CN", "NS"],
             "RROWNER2": ["GFRR", "CSXT", "BAYL", np.nan, np.nan, np.nan],
             "TRKRGHTS1": ["NS", "CSXT", np.nan, np.nan, np.nan, np.nan],
@@ -37,5 +37,5 @@ def test_simpify():
 
 
     assert len(G) == 4
-    assert list(e["length"]) == [2, 1, 3]
+    assert list(e["MILES"]) == [2, 1, 3]
     assert list(e["trans_mode"]) == ["rail", "rail", "rail"]

@@ -8,6 +8,7 @@ from dash.dependencies import Input, Output
 from mfreight.Multimodal.graph_utils import MultimodalNet
 from mfreight.utils.plot import make_ternary_selector
 from mfreight.utils import build_graph
+import time
 
 app = dash.Dash(
     __name__,
@@ -21,6 +22,13 @@ app = dash.Dash(
 server = app.server
 
 fig = make_ternary_selector()
+
+start = time.time()
+Net = MultimodalNet(path_u="mfreight/Multimodal/data/multimodal_G_tot_u.plk")
+price_idx = Net.set_price_to_graph()
+all_rail_owners = Net.get_rail_owners()
+options = [{"label": i, "value": i} for i in all_rail_owners]
+print(f"Refeshed in Elapsed time: {time.time() - start}")
 
 
 def build_upper_left_panel():
@@ -64,12 +72,14 @@ def build_upper_left_panel():
                 className="control-row-2",
                 children=[
                     html.Label("Select target feature"),
-                    html.Div(
-                        id="graph-container",
-                        children=dcc.Graph(
-                            id="feature-selector",
-                            figure=fig,
-                        ),
+                    dcc.RadioItems(
+                        id="feature-selector",
+                        options=[
+                            {"label": "CO2 Emissions", "value": "CO2_eq_kg"},
+                            {"label": "Price", "value": "Price"},
+                            {"label": "Duration", "value": "duration_h"},
+                        ],
+                        value="CO2_eq_kg",
                     ),
                 ],
             ),
@@ -79,20 +89,27 @@ def build_upper_left_panel():
                 children=[
                     html.Label("Select rail operators"),
                     html.Div(
-                        id="checklist-container",
-                        children=dcc.Checklist(
-                            id="operator-select-all",
-                            options=[{"label": "Select All Operators", "value": "All"}],
-                            value=["All"],
-                        ),
-                    ),
-                    html.Div(
                         id="operator-select-dropdown-outer",
                         children=dcc.Dropdown(
                             id="operator-selector",
+                            options=[{"label": i, "value": i} for i in all_rail_owners],
+                            value=all_rail_owners,
                             multi=True,
                             searchable=True,
                         ),
+                    ),
+                ],
+            ),
+            html.Div(
+                id="graph-container",
+                className="graph-container",
+                children=[
+                    html.Div(
+                        id="graph-upper",
+                        children=[
+                            html.P("Route results"),
+                            dcc.Loading(children=dcc.Graph(id="summary-results")),
+                        ],
                     ),
                 ],
             ),
@@ -151,47 +168,17 @@ app.layout = html.Div(
     ],
 )
 
-Net = MultimodalNet(path_u= "mfreight/Multimodal/data/multimodal_G_tot_u.plk")
-price_idx = Net.set_price_to_graph()
-
 
 @app.callback(
-    [
-        Output("operator-selector", "value"),
-        Output("operator-selector", "options"),
-        Output("map-title", "children"),
-    ],
-    [
-        Input("operator-select-all", "value"),
-    ],
-)
-def update_operator_dropdown(select_all):
-    all_rail_owners = Net.get_rail_owners()
-
-    options = [{"label": i, "value": i} for i in all_rail_owners]
-
-    if select_all == ["All"]:
-        value = [i["value"] for i in options]
-    else:
-        value = all_rail_owners[:4]
-
-    return value, options, "Multimodal route"
-
-
-@app.callback(
-    [Output("map", component_property="srcDoc"), Output("stats-container", "children")],
+    [Output("map", component_property="srcDoc"), Output("summary-results", "figure"), Output("stats-container", "children")],
     [
         Input("arrival", component_property="value"),
         Input("departure", component_property="value"),
         Input("operator-selector", component_property="value"),
-        Input("feature-selector", component_property="clickData"),
+        Input("feature-selector", component_property="value"),
     ],
 )
-def update_geo_map(select_arrival, select_departure, operators, weights):
-    if weights:
-        weights = weights["points"][0]
-    else:
-        weights = {"a": 0, "b": 0, "c": 1}
+def update_geo_map(select_arrival, select_departure, operators, feature):
 
     arrival_y = float(re.findall(r"(-?\d+.\d+)\)", select_arrival)[0])
     arrival_x = float(re.findall(r"\((-?\d+.\d+)", select_arrival)[0])
@@ -199,37 +186,63 @@ def update_geo_map(select_arrival, select_departure, operators, weights):
     departure_y = float(re.findall(r"(-?\d+.\d+)\)", select_departure)[0])
     departure_x = float(re.findall(r"\((-?\d+.\d+)", select_departure)[0])
 
-    orig_state = Net.extract_state((departure_x, departure_y))
-    dest_state = Net.extract_state((arrival_x, arrival_y))
+    start = time.time()
+    price_target = Net.get_price_target(
+        (arrival_x, arrival_y), (departure_x, departure_y), price_idx
+    )
+    print(f"get_price_target Elapsed time: {time.time() - start}")
 
-    if (orig_state, dest_state) in price_idx:
-        price_target = (orig_state, dest_state)
-    else:
-        price_target = ('default', 'default')
-
-    if weights["a"] > weights["b"] and weights["a"] > weights["c"]:
+    if feature == "Price":
         target = price_target
-    elif weights["b"] > weights["a"] and weights["b"] > weights["c"]:
-        target = 'duration_h'
-    elif weights["c"] > weights["a"] and weights["c"] > weights["b"]:
-        target = 'CO2_eq_kg'
     else:
-        target = 'price' # TODO simplify feature selector
-    removed_edges, removed_nodes = Net.chose_operator_in_graph(operators)
+        target = feature
 
-    fig, path = Net.plot_route(
+    start = time.time()
+    removed_edges, removed_nodes = Net.chose_operator_in_graph(operators)
+    print(f"get_price_target Elapsed time: {time.time() - start}")
+
+    start = time.time()
+    path = Net.get_shortest_path(
         (departure_x, departure_y),
         (arrival_x, arrival_y),
         target_weight=target,
-        folium=True,
     )
+    print(f"get_shortest_path Elapsed time: {time.time() - start}")
 
-    table = gen_table(Net.route_detail_from_graph(path, price_target=price_target))
+    start = time.time()
+    route_details = Net.route_detail_from_graph(path, price_target=price_target)
+    print(f"route_detail_from_graph Elapsed time: {time.time() - start}")
+
+    start = time.time()
+    chosen_mode = Net.chosen_path_mode(route_details)
+    print(f"chosen_path_mode Elapsed time: {time.time() - start}")
+
+    start = time.time()
+    table = gen_table(route_details)
+    print(f"gen_table Elapsed time: {time.time() - start}")
+
+    start = time.time()
+    summary = Net.compute_all_paths(
+        departure=(departure_x, departure_y),
+        arrival=(arrival_x, arrival_y),
+        price_target=price_target
+    )
+    print(f"compute_all_paths Elapsed time: {time.time() - start}")
+
+    start = time.time()
+    fig_summary = Net.plot_route_summary(summary, chosen_mode)
+    print(f"plot_route_summary Elapsed time: {time.time() - start}")
+
+    start = time.time()
+    fig = Net.plot_route(path)
+    print(f"plot_route Elapsed time: {time.time() - start}")
+
+    start = time.time()
     build_graph.add_nodes_from_df(Net.G_multimodal_u, removed_nodes)
     build_graph.add_edges_from_df(Net.G_multimodal_u, removed_edges)
+    print(f"Add Elapsed time: {time.time() - start}")
 
-
-    return fig._repr_html_(), table
+    return fig._repr_html_(), fig_summary, table
 
 
 def gen_table(route_detail):
@@ -255,6 +268,7 @@ def gen_table(route_detail):
             }
         ],
     )
+
 
 # Dev
 if __name__ == "__main__":
