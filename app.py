@@ -4,9 +4,8 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_table
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 from mfreight.Multimodal.graph_utils import MultimodalNet
-from mfreight.utils.plot import make_ternary_selector
 from mfreight.utils import build_graph
 import time
 
@@ -21,7 +20,6 @@ app = dash.Dash(
 )
 server = app.server
 
-fig = make_ternary_selector()
 
 start = time.time()
 Net = MultimodalNet(path_u="mfreight/Multimodal/data/multimodal_G_tot_u.plk")
@@ -33,45 +31,50 @@ print(f"Refeshed in Elapsed time: {time.time() - start}")
 
 def build_upper_left_panel():
     return html.Div(
-        id="upper-left",
-        className="six columns",
-        children=[
-            html.P(
-                className="section-title",
-                children="Chose route",
-            ),
+        [
             html.Div(
-                className="control-row-1",
                 children=[
+                    html.P(
+                        className="control_label",
+                        children="Chose route",
+                    ),
                     html.Div(
-                        id="select-departure_id",
+                        className="control-row-1",
                         children=[
-                            html.Label("Enter a (lat, long) departure position"),
-                            dcc.Input(
-                                id="departure",
-                                value="(30.439440, -85.057166)",
-                                type="text",
+                            html.Div(
+                                id="select-departure_id",
+                                children=[
+                                    html.Label(
+                                        "Enter a (lat, long) departure position"
+                                    ),
+                                    dcc.Input(
+                                        id="departure",
+                                        value="(40.439440, -115.057166)",
+                                        type="text",
+                                    ),
+                                ],
+                            ),
+                            html.Div(
+                                id="select-arrival_id",
+                                children=[
+                                    html.Label(
+                                        "Enter a (lat, long) destination position"
+                                    ),
+                                    dcc.Input(
+                                        id="arrival",
+                                        value="(25.382380, -80.475159)",
+                                        type="text",
+                                    ),
+                                ],
                             ),
                         ],
                     ),
-                    html.Div(
-                        id="select-arrival_id",
-                        children=[
-                            html.Label("Enter a (lat, long) destination position"),
-                            dcc.Input(
-                                id="arrival",
-                                value="(25.382380, -80.475159)",
-                                type="text",
-                            ),
-                        ],
+                    html.Br(),
+                    html.P(
+                        className="control_label",
+                        children="Select target feature",
                     ),
-                ],
-            ),
-            html.Div(
-                id="feature-selector-outer",
-                className="control-row-2",
-                children=[
-                    html.Label("Select target feature"),
+                    html.Br(),
                     dcc.RadioItems(
                         id="feature-selector",
                         options=[
@@ -81,24 +84,31 @@ def build_upper_left_panel():
                         ],
                         value="CO2_eq_kg",
                     ),
-                ],
-            ),
-            html.Div(
-                id="operator-selector-outer",
-                className="control-row-3",
-                children=[
-                    html.Label("Select rail operators"),
-                    html.Div(
-                        id="operator-select-dropdown-outer",
-                        children=dcc.Dropdown(
+                    html.Br(),
+                    html.P(
+                        className="control_label",
+                        children="Select rail operators",
+                    ),
+                    html.Br(),
+                    dcc.Dropdown(
                             id="operator-selector",
-                            options=[{"label": i, "value": i} for i in all_rail_owners],
+                            options=[
+                                {"label": i, "value": i}
+                                for i in all_rail_owners
+                            ],
                             value=all_rail_owners,
                             multi=True,
                             searchable=True,
                         ),
-                    ),
+                    html.Br(),
+                    html.Div(
+                        className="button-div",
+                        children=[html.Button('Update', id='submit-button')]
+                    )
+
                 ],
+                className="pretty_container",
+                id="upper-left-param",
             ),
             html.Div(
                 id="graph-container",
@@ -108,7 +118,13 @@ def build_upper_left_panel():
                         id="graph-upper",
                         children=[
                             html.P("Route results"),
-                            dcc.Loading(children=dcc.Graph(id="summary-results")),
+                            dcc.Loading(
+                                children=dcc.Graph(
+                                    id="summary-results",
+                                    config={"displayModeBar": False,
+                                            "responsive":True}
+                                )
+                            ),
                         ],
                     ),
                 ],
@@ -127,6 +143,8 @@ def build_upper_left_panel():
                 ],
             ),
         ],
+        id="upper-left",
+        className="six columns",
     )
 
 
@@ -161,6 +179,24 @@ app.layout = html.Div(
                                 html.Iframe(id="map", width="100%", height=600),
                             ],
                         ),
+                        html.Div(
+                            id="graph-right",
+                            children=[
+                                html.P(
+                                    className="section-title",
+                                    children="Route details",
+                                ),
+                                dcc.Loading(
+                                    children=dcc.Graph(
+                                        id="route-results",
+                                        config={"displayModeBar": False,
+                                                "responsive":True},
+                                    )
+                                ),
+                            ],
+                        ),
+                        html.Br(),
+                        html.Div(className="explanatory-text", id="rail-operators"),
                     ],
                 ),
             ],
@@ -170,15 +206,22 @@ app.layout = html.Div(
 
 
 @app.callback(
-    [Output("map", component_property="srcDoc"), Output("summary-results", "figure"), Output("stats-container", "children")],
     [
-        Input("arrival", component_property="value"),
-        Input("departure", component_property="value"),
-        Input("operator-selector", component_property="value"),
-        Input("feature-selector", component_property="value"),
+        Output("map", component_property="srcDoc"),
+        Output("summary-results", "figure"),
+        Output("stats-container", "children"),
+        Output("route-results", "figure"),
+        Output("rail-operators", "children"),
+    ],
+    [Input('submit-button', 'n_clicks')],
+    state=[
+        State("arrival", component_property="value"),
+        State("departure", component_property="value"),
+        State("operator-selector", component_property="value"),
+        State("feature-selector", component_property="value"),
     ],
 )
-def update_geo_map(select_arrival, select_departure, operators, feature):
+def update_geo_map(n_clicks, select_arrival, select_departure, operators, feature):
 
     arrival_y = float(re.findall(r"(-?\d+.\d+)\)", select_arrival)[0])
     arrival_x = float(re.findall(r"\((-?\d+.\d+)", select_arrival)[0])
@@ -199,7 +242,7 @@ def update_geo_map(select_arrival, select_departure, operators, feature):
 
     start = time.time()
     removed_edges, removed_nodes = Net.chose_operator_in_graph(operators)
-    print(f"get_price_target Elapsed time: {time.time() - start}")
+    print(f"chose_operator_in_graph Elapsed time: {time.time() - start}")
 
     start = time.time()
     path = Net.get_shortest_path(
@@ -208,6 +251,20 @@ def update_geo_map(select_arrival, select_departure, operators, feature):
         target_weight=target,
     )
     print(f"get_shortest_path Elapsed time: {time.time() - start}")
+
+    start = time.time()
+    scanned_route, path_rail_edges = Net.scan_route(
+        Net.route_detail_from_graph(
+            path, show_entire_route=True, price_target=price_target
+        )
+    )
+    print(f"scan_route Elapsed time: {time.time() - start}")
+
+    start = time.time()
+    operators_string = gen_rail_operators_display(
+        Net.rail_route_operators(path, path_rail_edges)
+    )
+    print(f"gen_rail_operators_display Elapsed time: {time.time() - start}")
 
     start = time.time()
     route_details = Net.route_detail_from_graph(path, price_target=price_target)
@@ -222,10 +279,14 @@ def update_geo_map(select_arrival, select_departure, operators, feature):
     print(f"gen_table Elapsed time: {time.time() - start}")
 
     start = time.time()
+    route_detail_graph = Net.plot_route_detail(scanned_route, path)
+    print(f"gen_table Elapsed time: {time.time() - start}")
+
+    start = time.time()
     summary = Net.compute_all_paths(
         departure=(departure_x, departure_y),
         arrival=(arrival_x, arrival_y),
-        price_target=price_target
+        price_target=price_target,
     )
     print(f"compute_all_paths Elapsed time: {time.time() - start}")
 
@@ -242,20 +303,20 @@ def update_geo_map(select_arrival, select_departure, operators, feature):
     build_graph.add_edges_from_df(Net.G_multimodal_u, removed_edges)
     print(f"Add Elapsed time: {time.time() - start}")
 
-    return fig._repr_html_(), fig_summary, table
+    return fig._repr_html_(), fig_summary, table, route_detail_graph, operators_string
 
 
-def gen_table(route_detail):
+def gen_table(route_details):
 
-    route_detail.reset_index(inplace=True)
-    route_detail = route_detail.rename(columns={"index": ""})
+    route_details.reset_index(inplace=True)
+    route_detail = route_details.rename(columns={"index": ""})
     return dash_table.DataTable(
         id="stats-table",
         columns=[
             {"name": i, "id": i, "editable": (i == "index")}
             for i in route_detail.columns
         ],
-        data=route_detail.round(2).to_dict("rows"),
+        data=route_details.round(2).to_dict("records"),
         page_size=5,
         style_cell={"background-color": "#242a3b", "color": "#7b7d8d"},
         style_as_list_view=False,
@@ -268,6 +329,10 @@ def gen_table(route_detail):
             }
         ],
     )
+
+
+def gen_rail_operators_display(main_operators):
+    return r"The rail road displayed is operated by:  " + ", ".join(main_operators)
 
 
 # Dev

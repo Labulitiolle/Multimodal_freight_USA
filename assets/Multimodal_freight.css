@@ -56,6 +56,12 @@ body {
   justify-content: space-between;
 }
 
+.button-div {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
+
 #feature-selector {
   display: flex;
   justify-content: space-around;
@@ -67,6 +73,20 @@ body {
   font-weight: bold;
   margin: 15px 0px;
 }
+
+  upper-left-param > div > label {
+    font-weight: normal;
+    margin-bottom: 2px;
+  }
+
+  .pretty_container {
+  border-radius: 10px;
+  background-color: #1d2230;
+  margin: 5px;
+  padding: 5px;
+  position: relative;
+  box-shadow: 2px 2px 2px #0a0b10;
+  }
 
 *.Select-control, Select--single, .Select-multi-value-wrapper, .Select-value, .Select-value-label {
   background-color: #171b26 !important;
@@ -112,6 +132,10 @@ span.Select-clear-zone {
   margin: 20px 0px;
 }
 
+#graph-right{
+  margin-top: 350px;
+}
+
 
 #geo-map-loading-outer {
   height: 10rem;
@@ -125,11 +149,16 @@ span.Select-clear-zone {
   display: inline-block;
 }
 
-.section-title, #map-title {
+.control_label, #map-title {
   font-size: 16px;
   font-weight: bold;
   display: block;
 }
+
+.explanatory-text {
+ font-size: 14px;
+ font-weight: normal;
+ display: block;}
 
 /*
   ##Device = Most of the Smartphones Mobiles (Portrait)
@@ -175,10 +204,25 @@ span.Select-clear-zone {
     margin-bottom: 2px;
   }
 
+  upper-left-param > div > label {
+    font-weight: normal;
+    margin-bottom: 2px;
+  }
+
+  .pretty_container {
+  border-radius: 5px;
+  background-color: #1d2230;
+  margin: 5px;
+  padding: 5px;
+  position: relative;
+  box-shadow: 2px 2px 2px #0a0b10;
+  }
+
   #upper-left, #geo-map-outer {
     width: 100%;
     margin-left: 0
   }
+
 
   #lower-container {
     position: relative;

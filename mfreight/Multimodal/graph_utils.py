@@ -1,6 +1,7 @@
 import os
 import re
 import time
+from collections import Counter
 from typing import Any, Callable, List, Tuple, TypeVar
 
 import geopandas as gpd
@@ -102,7 +103,6 @@ class MultimodalNet:
         return edges_to_remove, nodes_to_remove
 
     def chose_operator_in_graph(self, operators: List[str] = ["CSXT"]) -> GeoDataFrame:
-
 
         edges_to_remove, nodes_to_remove = self.chose_operator_in_df(operators)
 
@@ -232,26 +232,241 @@ class MultimodalNet:
         if show_entire_route:
             return route_detail
 
+        route_summary = pd.pivot_table(
+            route_detail,
+            values=["price", "CO2_eq_kg", "duration_h", "dist_miles"],
+            index=["trans_mode"],
+            aggfunc=np.sum,
+        )
+
+        route_summary.rename(columns={"dist_miles": "distance_miles"}, inplace=True)
+        route_summary = route_summary.round(2)
+
+        if show_breakdown_by_mode:
+
+            route_summary = route_summary.append(
+                pd.DataFrame(dict(route_summary.sum()), index=["Total"])
+            )
         else:
-            route_summary = pd.pivot_table(
-                route_detail,
-                values=["price", "CO2_eq_kg", "duration_h", "dist_miles"],
-                index=["trans_mode"],
-                aggfunc=np.sum,
+            route_summary = pd.DataFrame(dict(route_summary.sum()), index=["Total"])
+
+        return route_summary
+
+    def plot_route_detail(self, scanned_route, path):
+
+        scanned_route_norm = scanned_route.loc[
+            :, ["price", "CO2_eq_kg", "duration_h", "dist_miles"]
+        ] / scanned_route.loc[
+            :, ["price", "CO2_eq_kg", "duration_h", "dist_miles"]
+        ].sum(
+            axis=0
+        )
+        if len(scanned_route) == 3:
+            terminal_adresses = self.get_terminal_adress(path)
+            first_leg = 400 * scanned_route_norm.loc[0, "dist_miles"]
+            second_leg = 400 * scanned_route_norm.loc[1, "dist_miles"]
+            third_leg = 400 * scanned_route_norm.loc[2, "dist_miles"]
+
+            if third_leg < 12:
+                third_leg = 12
+            if first_leg < 12:
+                first_leg = 12
+
+            marker_space = 10
+            fig = go.Figure(
+                go.Scatter(
+                    x=[0],
+                    y=[0.5],
+                    marker=dict(size=20, color="black"),
+                    text="Departure",
+                    hoverinfo="text",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[
+                        marker_space,
+                        marker_space,
+                        first_leg + marker_space - 10,
+                        first_leg + marker_space,
+                        first_leg + marker_space - 10,
+                    ],
+                    y=[0, 1, 1, 0.5, 0],
+                    fill="toself",
+                    fillcolor="grey",
+                    line_width=0.1,
+                    marker=dict(size=0.1),
+                    hoveron="fills",
+                    text=f"<b>Mode:</b> {scanned_route.loc[0, 'trans_mode']} <br>Price: {scanned_route.loc[0, 'price']}, CO2: {scanned_route.loc[0, 'CO2_eq_kg']}, dist: {scanned_route.loc[0, 'dist_miles']}",
+                    hoverinfo="text",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[first_leg + marker_space * 2],
+                    y=[0.5],
+                    marker=dict(size=20, color="black"),
+                    text=f"<b>Terminal:</b> <br>{terminal_adresses[1]}",
+                    hoverinfo='text'
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[
+                        first_leg + marker_space * 3,
+                        first_leg + marker_space * 3,
+                        first_leg + marker_space * 3 + second_leg - 10,
+                        first_leg + marker_space * 3 + second_leg,
+                        first_leg + marker_space * 3 + second_leg - 10,
+                    ],
+                    y=[0, 1, 1, 0.5, 0],
+                    fill="toself",
+                    fillcolor="green",
+                    line_width=0.1,
+                    marker=dict(size=0.1),
+                    hoveron="fills",
+                    text=f"<b>Mode:</b> {scanned_route.loc[1, 'trans_mode']} <br>Price: {scanned_route.loc[1, 'price']}, CO2: {scanned_route.loc[1, 'CO2_eq_kg']}, dist: {scanned_route.loc[1, 'dist_miles']}",
+                    hoverinfo="text",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[first_leg + marker_space * 4 + second_leg],
+                    y=[0.5],
+                    marker=dict(size=20, color="black"),
+                    text=f"<b>Terminal:</b> <br>{terminal_adresses[1]}",
+                    hoverinfo='text'
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[
+                        first_leg + marker_space * 5 + second_leg,
+                        first_leg + marker_space * 5 + second_leg,
+                        first_leg + marker_space * 5 + second_leg + third_leg - 10,
+                        first_leg + marker_space * 5 + second_leg + third_leg,
+                        first_leg + marker_space * 5 + second_leg + third_leg - 10,
+                    ],
+                    y=[0, 1, 1, 0.5, 0],
+                    fill="toself",
+                    fillcolor="grey",
+                    line_width=0.1,
+                    marker=dict(size=0.1),
+                    hoveron="fills",
+                    text=f"<b>Mode:</b> {scanned_route.loc[2, 'trans_mode']} <br>Price: {scanned_route.loc[2, 'price']}, CO2: {scanned_route.loc[2, 'CO2_eq_kg']}, dist: {scanned_route.loc[2, 'dist_miles']}",
+                    hoverinfo="text",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[first_leg + marker_space * 6 + second_leg + third_leg],
+                    y=[0.5],
+                    marker=dict(size=20, color="black"),
+                    text="Arrival",
+                    hoverinfo="text",
+                )
             )
 
-            route_summary.rename(columns={"dist_miles": "distance_miles"}, inplace=True)
-            route_summary = route_summary.round(2)
-
-            if show_breakdown_by_mode:
-
-                route_summary = route_summary.append(
-                    pd.DataFrame(dict(route_summary.sum()), index=["Total"])
+        elif len(scanned_route) == 1:
+            first_leg = 400
+            marker_space = 10
+            fig = go.Figure(
+                go.Scatter(
+                    x=[0],
+                    y=[0.5],
+                    marker=dict(size=20, color="black"),
+                    text="Departure",
+                    hoverinfo="text",
                 )
-            else:
-                route_summary = pd.DataFrame(dict(route_summary.sum()), index=["Total"])
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[
+                        marker_space,
+                        marker_space,
+                        first_leg + marker_space - 10,
+                        first_leg + marker_space,
+                        first_leg + marker_space - 10,
+                    ],
+                    y=[0, 1, 1, 0.5, 0],
+                    fill="toself",
+                    fillcolor="grey",
+                    line_width=0.1,
+                    marker=dict(size=0.1),
+                    hoveron="fills",
+                    text=f"Price: {scanned_route.loc[0, 'price']}, CO2: {scanned_route.loc[0, 'CO2_eq_kg']}, dist: {scanned_route.loc[0, 'dist_miles']}",
+                    hoverinfo="text",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[first_leg + marker_space * 2],
+                    y=[0.5],
+                    marker=dict(size=20, color="black"),
+                )
+            )
 
-            return route_summary  # , list(route_detail.trans_mode).count("intermodal_link") TODO do I need this ?
+        else:
+            raise AssertionError(f"not supported route {scanned_route}")
+
+        fig.update_layout(
+            height=50,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            showlegend=False,
+            yaxis={
+                "showticklabels": False,
+                "showgrid": False,
+                "zeroline": False,
+            },
+            xaxis={
+                "showticklabels": False,
+                "showgrid": False,
+                "zeroline": False,
+                "tickfont": {"color": "rgb(128, 128, 128)"},
+            },
+            margin=dict(l=0, r=0, b=0, t=0),
+        )
+        return fig
+
+    def scan_route(self, route_detail):
+        weights = ["price", "CO2_eq_kg", "duration_h", "dist_miles"]
+        new_df = pd.DataFrame(columns=weights)
+        new_row = pd.Series(index=weights, data=[0, 0, 0, 0])
+        flag_road = 0
+        flag_rail = 0
+        rail_counter = 0
+        for idx, row in route_detail.iterrows():
+            if row.trans_mode == "intermodal_link":
+                continue
+            if row.trans_mode == "road" and flag_road == 0:
+                new_row = new_row + row.loc[weights]
+
+            elif row.trans_mode != "road" and flag_road == 0:
+                flag_road = 1
+                new_row["trans_mode"] = "road"
+                new_df = new_df.append(new_row, ignore_index=True)
+                new_row = pd.Series(index=weights, data=[0, 0, 0, 0])
+
+            if row.trans_mode == "rail" and flag_rail == 0:
+                new_row = new_row + row.loc[weights]
+                rail_counter += 1
+
+            elif row.trans_mode != "rail" and flag_rail == 0 and flag_road == 1:
+                flag_rail = 1
+                new_row["trans_mode"] = "rail"
+                new_df = new_df.append(new_row, ignore_index=True)
+                new_row = pd.Series(index=weights, data=[0, 0, 0, 0])
+
+            if row.trans_mode == "road" and flag_road == 1:
+                new_row = new_row + row.loc[weights]
+
+            if row.trans_mode == "rail" and flag_rail == 1:
+                raise AssertionError("Double Rail")
+
+        new_row["trans_mode"] = "road"
+        new_df = new_df.append(new_row, ignore_index=True).round(1)
+        return new_df, rail_counter
 
     def plot_multimodal_graph(self, G=None, bbox=None):
         """
@@ -332,7 +547,6 @@ class MultimodalNet:
         if G is None:
             G = self.G_multimodal_u
 
-
         node_orig, dist_orig = ox.get_nearest_node(
             G, orig, method="haversine", return_dist=True
         )
@@ -358,34 +572,6 @@ class MultimodalNet:
             route_width=4,
             route_opacity=0.9,
         )
-
-    @staticmethod
-    def print_graph_info(
-        total_dist: Tuple[float, float],
-        weight_path: Tuple[float, float],
-        target_weight: str = "CO2_eq_kg",
-    ):
-
-        if target_weight == "dist_miles":
-
-            print(f"Distance {total_dist} [miles]")
-
-        elif target_weight == "duration_h":
-            if weight_path > 1:
-                print(f"Duration {weight_path} [h] \nDistance {total_dist} [miles]")
-
-            else:
-                print(
-                    f"Duration {weight_path * 60} [min] \nDistance {total_dist} [miles]"
-                )
-
-        elif target_weight == "CO2_eq_kg":
-            print(
-                f"{str(target_weight)}: {weight_path} \nDistance {total_dist} [miles]"
-            )
-
-        else:
-            print(f"{str(target_weight)}: {target_weight}")
 
     def heuristic_func(self, u: int, v: int) -> float:
         return great_circle(
@@ -512,11 +698,14 @@ class MultimodalNet:
 
     def plot_route_summary(self, summary: DataFrame, chosen: str) -> PlotlyFig:
 
+        summary = summary.copy()
+
+        summary = summary.loc[:, ["CO2_eq_kg", "price", "duration_h"]]
         summary.rename(
             columns={
-                "price": r"Price [$]  ",
-                "duration_h": r"Duration [h]  ",
-                "CO2_eq_kg": r"CO2 emissions [kg_eq]  ",
+                "price": r"Price <br> [$]",
+                "duration_h": r"Duration <br> [h]",
+                "CO2_eq_kg": r"CO2 emissions <br> [kg_eq]",
             },
             inplace=True,
         )
@@ -535,52 +724,112 @@ class MultimodalNet:
         s_t_n = norm_summary[norm_summary.level_1 == "Truckload"]
         s_m = summary[summary.level_1 == "Multimodal"]
         s_m_n = norm_summary[norm_summary.level_1 == "Multimodal"]
+
         if chosen == "Truckload":
             color_t = "rgb(48, 36, 216)"
             color_m = "rgb(170, 167, 209)"
-            t_name = "Chosen(Truck)"
+            t_name = "Truck(Chosen)"
             m_name = "Multimodal"
         else:
             color_m = "rgb(48, 36, 216)"
             color_t = "rgb(170, 167, 209)"
             t_name = "Truck"
-            m_name = "Chosen(Multimodal)"
+            m_name = "Multimodal(Chosen)"
 
         fig.add_trace(
             go.Bar(
-                x=s_t_n.vals.values,
-                y=s_t.level_0.values,
+                x=s_t.level_0.values,
+                y=s_t_n.vals.values,
                 textposition="auto",
                 text=round(s_t.vals, 1).values,
-                orientation="h",
+                orientation="v",
                 name=t_name,
                 marker_color=color_t,
+                hoverinfo='skip'
             )
         )
         fig.add_trace(
             go.Bar(
-                x=s_m_n.vals.values,
-                y=s_m.level_0.values,
+                x=s_m.level_0.values,
+                y=s_m_n.vals.values,
                 textposition="auto",
                 text=round(s_m.vals, 1).values,
-                orientation="h",
+                orientation="v",
                 name=m_name,
                 marker_color=color_m,
+                hoverinfo='skip'
             )
         )
 
         fig.update_layout(
-            width=600,
-            height=200,
+            # width=600,
+            height=180,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
         )
 
         fig.update_layout(
-            xaxis={"showticklabels": False},
-            yaxis={"showticklabels": True, "tickfont": {"color": "rgb(128, 128, 128)"}},
-            legend={"font": {"color": "rgb(128, 128, 128)"}},
+            yaxis={
+                "showticklabels": False,
+                "showgrid": False,
+                "zeroline": False,
+            },
+            xaxis={
+                "showticklabels": True,
+                "showgrid": False,
+                "zeroline": False,
+                "tickfont": {"color": "rgb(128, 128, 128)"},
+            },
+            legend=dict(
+                orientation="h", font={"color": "rgb(128, 128, 128)"}, y=1.2, x=0.35
+            ),
             margin=dict(l=0, r=0, b=0, t=0),
+            hoverlabel=None,
         )
 
         return fig
+
+    def get_terminal_adress(self, path: list) -> list:
+        intermodal_terminals_info = pd.read_csv(
+            self.script_dir + "/data/intermodal_adress.csv"
+        )
+        terminal_adresses = []
+        for idx in range(len(path)):
+            if path[idx] < 200:
+                if (
+                    self.G_multimodal_u[path[idx - 1]][path[idx]][0]["trans_mode"]
+                    == "intermodal_link"
+                ):
+                    terminal_adresses.append(
+                        intermodal_terminals_info.loc[path[idx], "TERM_ADDRE"]
+                        + intermodal_terminals_info.loc[path[idx], "TERMINAL"]
+                    )
+                elif (
+                    self.G_multimodal_u[path[idx]][path[idx + 1]][0]["trans_mode"]
+                    == "intermodal_link"
+                ):
+                    terminal_adresses.append(
+                        intermodal_terminals_info.loc[path[idx], "TERM_ADDRE"]
+                        + intermodal_terminals_info.loc[path[idx], "TERMINAL"]
+                    )
+
+        return terminal_adresses
+
+    def rail_route_operators(self, path, rail_edges_counter):
+        operators = []
+        for u, v in zip(path[:-1], path[1:]):
+            d = self.G_multimodal_u[u][v][0]
+            for k, v in zip(d.keys(), d.values()):
+                if k[:7] == "RROWNER" or k[:7] == "TRKRGHT":
+                    operators.append(v)
+
+        main_operators = []
+        counter = 0
+        for operator, count in Counter(operators).most_common():
+            if counter < rail_edges_counter:
+                main_operators.append(operator)
+                counter += count
+            else:
+                break
+
+        return main_operators
