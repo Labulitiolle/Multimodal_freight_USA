@@ -1,21 +1,18 @@
 import os
 import re
-import time
 from collections import Counter
 from typing import Any, Callable, List, Tuple, TypeVar
 
-import geopandas as gpd
-import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import osmnx as ox
 import pandas as pd
-import plotly.graph_objects as go
 from geopy.distance import great_circle
 from geopy.geocoders import Nominatim
 from shapely import wkt
 
-from mfreight.utils import astar_revisited, constants, folium_revisited
+from mfreight.utils import constants, folium_revisited, shortest_path_revisited, plot
+from mfreight.Multimodal import dash_plots_utils
 
 Polygon = TypeVar("shapely.geometry.polygon.Polygon")
 Graph = TypeVar("networkx.classes.multigraph.MultiGraph")
@@ -33,6 +30,7 @@ class MultimodalNet:
         self.G_multimodal_u = nx.read_gpickle(path_u)
         self.script_dir = os.path.dirname(__file__)
         self.class1_operators = ["BNSF", "UP", "CN", "CPRS", "KCS", "CSXT", "NS"]
+        self.price_idx = self.set_price_to_graph(set=False)
 
         self.rail_edges = self.load_and_format_csv(
             self.script_dir + "/data/rail_edges.csv"
@@ -41,6 +39,8 @@ class MultimodalNet:
             self.script_dir + "/data/rail_nodes.csv"
         )
 
+        self.G_reachable_nodes = self.get_reachable_nodes()
+
     def load_and_format_csv(self, path: str) -> GeoDataFrame:
         df = pd.read_csv(path, index_col=0, low_memory=False)
         df["geometry"] = df["geometry"].apply(wkt.loads)
@@ -48,6 +48,25 @@ class MultimodalNet:
             tuple(re.findall(r"(\w+)", a)[0]) if a[0] == "(" else a for a in df.columns
         ]
         return df
+
+    @staticmethod
+    def graph_copy_nodes(G):
+        copied_G = nx.Graph()
+        copied_G.graph.update(G.graph)
+        copied_G.add_nodes_from((n, d.copy()) for n, d in G.nodes(data=True))
+        return copied_G
+
+    def remove_rail_nodes(self, G: Graph = None):
+        if G is None:
+            G = self.G_reachable_nodes
+
+        rail_nodes = [n for n, d in G.nodes(data=True) if d["trans_mode"] == "rail"]
+        G.remove_nodes_from(rail_nodes)
+
+    def get_reachable_nodes(self):
+        Graph_nodes = self.graph_copy_nodes(self.G_multimodal_u)
+        self.remove_rail_nodes(Graph_nodes)
+        return Graph_nodes
 
     def get_rail_owners(self) -> List[str]:
 
@@ -126,28 +145,29 @@ class MultimodalNet:
 
         return state_code
 
-    def set_price_to_graph(self):
+    def set_price_to_graph(self, set=True):
 
         spot_price = self.load_price_table()
 
         price_idx = spot_price.index
 
-        for u, v, d in self.G_multimodal_u.edges(data=True):
-            prices_for_segment = d["dist_miles"] * spot_price
+        if set:
 
-            if d["trans_mode"] == "road":
-                self.G_multimodal_u[u][v][0].update(
-                    zip(price_idx, prices_for_segment["Truckload"])
-                )
+            for u, v, d in self.G_multimodal_u.edges(data=True):
 
-            elif d["trans_mode"] == "rail":
-                self.G_multimodal_u[u][v][0].update(
-                    zip(price_idx, prices_for_segment["Intermodal"])
-                )
-            else:
-                self.G_multimodal_u[u][v][0].update(
-                    zip(price_idx, prices_for_segment["Intermodal"])
-                )
+                if d["trans_mode"] == "road":
+                    self.G_multimodal_u[u][v].update(
+                        zip(price_idx, d["dist_miles"] * spot_price["Truckload"])
+                    )
+
+                elif d["trans_mode"] == "rail":
+                    self.G_multimodal_u[u][v].update(
+                        zip(price_idx, d["dist_miles"] * spot_price["Intermodal"])
+                    )
+                else:
+                    self.G_multimodal_u[u][v].update(
+                        zip(price_idx, d["dist_miles"] * spot_price["Intermodal"])
+                    )
 
         return price_idx
 
@@ -157,11 +177,11 @@ class MultimodalNet:
             index_col=0,
         )  # mean aggregation
 
-    def get_price_target(self, departure, arrival, price_idx):
+    def get_price_target(self, departure, arrival):
         orig_state = self.extract_state(departure)
         dest_state = self.extract_state(arrival)
 
-        if (orig_state, dest_state) in price_idx:
+        if str((orig_state, dest_state)) in self.price_idx:
             price_target = str((orig_state, dest_state))
 
         else:
@@ -194,8 +214,12 @@ class MultimodalNet:
         if G is None:
             G = self.G_multimodal_u
 
-        node_orig = ox.get_nearest_node(G, orig, method="haversine")
-        node_dest = ox.get_nearest_node(G, dest, method="haversine")
+        node_orig = ox.get_nearest_node(
+            self.G_reachable_nodes, orig, method="haversine"
+        )
+        node_dest = ox.get_nearest_node(
+            self.G_reachable_nodes, dest, method="haversine"
+        )
 
         shortest_path_nx = nx.astar_path(G, node_orig, node_dest, weight=target_weight)
 
@@ -221,12 +245,12 @@ class MultimodalNet:
             if w == "price" and price_target:
                 weight = self._get_weight(price_target)
                 route_detail[str(w)] = [
-                    weight(G[u][v][0]) for u, v in zip(path[:-1], path[1:])
+                    weight(G[u][v]) for u, v in zip(path[:-1], path[1:])
                 ]
             else:
                 weight = self._get_weight(w)
                 route_detail[str(w)] = [
-                    weight(G[u][v][0]) for u, v in zip(path[:-1], path[1:])
+                    weight(G[u][v]) for u, v in zip(path[:-1], path[1:])
                 ]
 
         if show_entire_route:
@@ -252,193 +276,23 @@ class MultimodalNet:
 
         return route_summary
 
-    def plot_route_detail(self, scanned_route, path):
-
-        scanned_route_norm = scanned_route.loc[
-            :, ["price", "CO2_eq_kg", "duration_h", "dist_miles"]
-        ] / scanned_route.loc[
-            :, ["price", "CO2_eq_kg", "duration_h", "dist_miles"]
-        ].sum(
-            axis=0
-        )
-        if len(scanned_route) == 3:
-            terminal_adresses = self.get_terminal_adress(path)
-            first_leg = 400 * scanned_route_norm.loc[0, "dist_miles"]
-            second_leg = 400 * scanned_route_norm.loc[1, "dist_miles"]
-            third_leg = 400 * scanned_route_norm.loc[2, "dist_miles"]
-
-            if third_leg < 12:
-                third_leg = 12
-            if first_leg < 12:
-                first_leg = 12
-
-            marker_space = 10
-            fig = go.Figure(
-                go.Scatter(
-                    x=[0],
-                    y=[0.5],
-                    marker=dict(size=20, color="black"),
-                    text="Departure",
-                    hoverinfo="text",
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=[
-                        marker_space,
-                        marker_space,
-                        first_leg + marker_space - 10,
-                        first_leg + marker_space,
-                        first_leg + marker_space - 10,
-                    ],
-                    y=[0, 1, 1, 0.5, 0],
-                    fill="toself",
-                    fillcolor="grey",
-                    line_width=0.1,
-                    marker=dict(size=0.1),
-                    hoveron="fills",
-                    text=f"<b>Mode:</b> {scanned_route.loc[0, 'trans_mode']} <br>Price: {scanned_route.loc[0, 'price']}, CO2: {scanned_route.loc[0, 'CO2_eq_kg']}, dist: {scanned_route.loc[0, 'dist_miles']}",
-                    hoverinfo="text",
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=[first_leg + marker_space * 2],
-                    y=[0.5],
-                    marker=dict(size=20, color="black"),
-                    text=f"<b>Terminal:</b> <br>{terminal_adresses[1]}",
-                    hoverinfo='text'
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=[
-                        first_leg + marker_space * 3,
-                        first_leg + marker_space * 3,
-                        first_leg + marker_space * 3 + second_leg - 10,
-                        first_leg + marker_space * 3 + second_leg,
-                        first_leg + marker_space * 3 + second_leg - 10,
-                    ],
-                    y=[0, 1, 1, 0.5, 0],
-                    fill="toself",
-                    fillcolor="green",
-                    line_width=0.1,
-                    marker=dict(size=0.1),
-                    hoveron="fills",
-                    text=f"<b>Mode:</b> {scanned_route.loc[1, 'trans_mode']} <br>Price: {scanned_route.loc[1, 'price']}, CO2: {scanned_route.loc[1, 'CO2_eq_kg']}, dist: {scanned_route.loc[1, 'dist_miles']}",
-                    hoverinfo="text",
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=[first_leg + marker_space * 4 + second_leg],
-                    y=[0.5],
-                    marker=dict(size=20, color="black"),
-                    text=f"<b>Terminal:</b> <br>{terminal_adresses[1]}",
-                    hoverinfo='text'
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=[
-                        first_leg + marker_space * 5 + second_leg,
-                        first_leg + marker_space * 5 + second_leg,
-                        first_leg + marker_space * 5 + second_leg + third_leg - 10,
-                        first_leg + marker_space * 5 + second_leg + third_leg,
-                        first_leg + marker_space * 5 + second_leg + third_leg - 10,
-                    ],
-                    y=[0, 1, 1, 0.5, 0],
-                    fill="toself",
-                    fillcolor="grey",
-                    line_width=0.1,
-                    marker=dict(size=0.1),
-                    hoveron="fills",
-                    text=f"<b>Mode:</b> {scanned_route.loc[2, 'trans_mode']} <br>Price: {scanned_route.loc[2, 'price']}, CO2: {scanned_route.loc[2, 'CO2_eq_kg']}, dist: {scanned_route.loc[2, 'dist_miles']}",
-                    hoverinfo="text",
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=[first_leg + marker_space * 6 + second_leg + third_leg],
-                    y=[0.5],
-                    marker=dict(size=20, color="black"),
-                    text="Arrival",
-                    hoverinfo="text",
-                )
-            )
-
-        elif len(scanned_route) == 1:
-            first_leg = 400
-            marker_space = 10
-            fig = go.Figure(
-                go.Scatter(
-                    x=[0],
-                    y=[0.5],
-                    marker=dict(size=20, color="black"),
-                    text="Departure",
-                    hoverinfo="text",
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=[
-                        marker_space,
-                        marker_space,
-                        first_leg + marker_space - 10,
-                        first_leg + marker_space,
-                        first_leg + marker_space - 10,
-                    ],
-                    y=[0, 1, 1, 0.5, 0],
-                    fill="toself",
-                    fillcolor="grey",
-                    line_width=0.1,
-                    marker=dict(size=0.1),
-                    hoveron="fills",
-                    text=f"Price: {scanned_route.loc[0, 'price']}, CO2: {scanned_route.loc[0, 'CO2_eq_kg']}, dist: {scanned_route.loc[0, 'dist_miles']}",
-                    hoverinfo="text",
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=[first_leg + marker_space * 2],
-                    y=[0.5],
-                    marker=dict(size=20, color="black"),
-                )
-            )
-
-        else:
-            raise AssertionError(f"not supported route {scanned_route}")
-
-        fig.update_layout(
-            height=50,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            showlegend=False,
-            yaxis={
-                "showticklabels": False,
-                "showgrid": False,
-                "zeroline": False,
-            },
-            xaxis={
-                "showticklabels": False,
-                "showgrid": False,
-                "zeroline": False,
-                "tickfont": {"color": "rgb(128, 128, 128)"},
-            },
-            margin=dict(l=0, r=0, b=0, t=0),
-        )
-        return fig
-
     def scan_route(self, route_detail):
         weights = ["price", "CO2_eq_kg", "duration_h", "dist_miles"]
         new_df = pd.DataFrame(columns=weights)
         new_row = pd.Series(index=weights, data=[0, 0, 0, 0])
-        flag_road = 0
-        flag_rail = 0
-        rail_counter = 0
+        flag_road, flag_rail = 0, 0
+        rail_counter, counter = 0, 0
+        stop_list = [0]
+
         for idx, row in route_detail.iterrows():
-            if row.trans_mode == "intermodal_link":
+            counter += 1
+
+            if row.trans_mode == "intermodal_link":  # Ignore intermodal
                 continue
+
+            if counter == 1 and row.trans_mode == "rail":  # No road drayage
+                flag_road = 1
+
             if row.trans_mode == "road" and flag_road == 0:
                 new_row = new_row + row.loc[weights]
 
@@ -447,6 +301,7 @@ class MultimodalNet:
                 new_row["trans_mode"] = "road"
                 new_df = new_df.append(new_row, ignore_index=True)
                 new_row = pd.Series(index=weights, data=[0, 0, 0, 0])
+                stop_list.append(idx)
 
             if row.trans_mode == "rail" and flag_rail == 0:
                 new_row = new_row + row.loc[weights]
@@ -457,6 +312,7 @@ class MultimodalNet:
                 new_row["trans_mode"] = "rail"
                 new_df = new_df.append(new_row, ignore_index=True)
                 new_row = pd.Series(index=weights, data=[0, 0, 0, 0])
+                stop_list.append(idx)
 
             if row.trans_mode == "road" and flag_road == 1:
                 new_row = new_row + row.loc[weights]
@@ -464,75 +320,61 @@ class MultimodalNet:
             if row.trans_mode == "rail" and flag_rail == 1:
                 raise AssertionError("Double Rail")
 
-        new_row["trans_mode"] = "road"
-        new_df = new_df.append(new_row, ignore_index=True).round(1)
-        return new_df, rail_counter
-
-    def plot_multimodal_graph(self, G=None, bbox=None):
-        """
-
-        :param bbox: If a subset of teh graph should be returned.
-        e.g. bbox = (west,north,east,south)
-
-        :return: nodes, edges
-        """
-        if G is None:
-            G = self.G_multimodal_u
-
-        nodes_road, nodes_rail = [], []
-        nodes_intermodal_geometry = []
-        if bbox:
-            for n, data in G.nodes(data=True):
-                if bbox[0] < data["x"] < bbox[2] and bbox[3] < data["y"] < bbox[1]:
-                    if data["trans_mode"] == "road":
-                        nodes_road.append(n)
-                    elif (
-                        data["trans_mode"] == "rail"
-                        or data["trans_mode"] == "intermodal"
-                    ):
-                        nodes_rail.append(n)
-                    if data["trans_mode"] == "intermodal":
-                        nodes_intermodal_geometry.append(data["geometry"])
+        if row.trans_mode == "road":
+            new_row["trans_mode"] = "road"
         else:
-            for n, data in G.nodes(data=True):
-                if data["trans_mode"] == "road":
-                    nodes_road.append(n)
-                elif data["trans_mode"] == "rail" or data["trans_mode"] == "intermodal":
-                    nodes_rail.append(n)
-                if data["trans_mode"] == "intermodal":
-                    nodes_intermodal_geometry.append(data["geometry"])
+            new_row["trans_mode"] = "rail"
 
-        G_road = G.subgraph(nodes_road)
-        G_rail = G.subgraph(nodes_rail)
-        intermodal_nodes = gpd.GeoDataFrame(
-            {"geometry": nodes_intermodal_geometry}, crs="epsg:4326"
-        )
+        new_df = new_df.append(new_row, ignore_index=True).round(1)
+        stop_list.append(idx)
 
-        fig, ax = plt.subplots(figsize=(20, 10))
-        ox.plot_graph(
-            G_rail,
-            edge_color="green",
-            edge_linewidth=1,
-            edge_alpha=0.5,
-            node_color="yellow",
-            node_size=1,
-            node_alpha=0.1,
-            bgcolor="white",
-            show=False,
-            ax=ax,
-        )
-        intermodal_nodes.plot(ax=ax, color="red")
-        ox.plot_graph(
-            G_road,
-            edge_color="blue",
-            edge_linewidth=1,
-            edge_alpha=0.1,
-            node_color="blue",
-            bgcolor="white",
-            node_size=0.01,
-            node_alpha=0.2,
-            show=True,
-            ax=ax,
+        return new_df, rail_counter, stop_list
+
+    def get_heuristics(self, price_target):
+        G = self.G_multimodal_u
+        price_df = self.load_price_table()
+        min_price = min(price_df.loc[price_target])
+
+        def heuristic_func_duration(u, v, G=G):
+            return (
+                great_circle(
+                    (G.nodes[u]["y"], G.nodes[u]["x"]),
+                    (G.nodes[v]["y"], G.nodes[v]["x"]),
+                ).miles
+                / 75
+            )
+
+        def heuristic_func_co2(u, v, G=G):
+            return (
+                great_circle(
+                    (G.nodes[u]["y"], G.nodes[u]["x"]),
+                    (G.nodes[v]["y"], G.nodes[v]["x"]),
+                ).miles
+                * 0.01213
+            )
+
+        def heuristic_func_price(u, v, G=G, min_price=min_price):
+            return (
+                great_circle(
+                    (G.nodes[u]["y"], G.nodes[u]["x"]),
+                    (G.nodes[v]["y"], G.nodes[v]["x"]),
+                ).miles
+                * min_price
+            )
+
+        return {
+            "duration_h": heuristic_func_duration,
+            "CO2_eq_kg": heuristic_func_co2,
+            "price": heuristic_func_price,
+        }
+
+    def heuristic_func_co22(self, u, v):
+        G = self.G_multimodal_u
+        return (
+            great_circle(
+                (G.nodes[u]["y"], G.nodes[u]["x"]), (G.nodes[v]["y"], G.nodes[v]["x"])
+            ).miles
+            * 0.01213
         )
 
     def get_shortest_path(
@@ -540,28 +382,29 @@ class MultimodalNet:
         orig: Tuple[float, float],
         dest: Tuple[float, float],
         target_weight: str = "CO2_eq_kg",
-        G: Graph = None,
+        price_target: str = "range1",
+        G: Graph = None
     ):
 
-        # start = time.time()
         if G is None:
             G = self.G_multimodal_u
 
+        if target_weight == "price":
+            target_weight = price_target
+
         node_orig, dist_orig = ox.get_nearest_node(
-            G, orig, method="haversine", return_dist=True
+            self.G_reachable_nodes, orig, method="haversine", return_dist=True
         )
         node_dest, dist_dest = ox.get_nearest_node(
-            G, dest, method="haversine", return_dist=True
+            self.G_reachable_nodes, dest, method="haversine", return_dist=True
         )
 
-        shortest_path_nodes = nx.astar_path(
-            G, node_orig, node_dest, weight=target_weight
-        )
-        # print(f"get_shortest_path Elapsed time: {time.time() - start}")
 
-        return shortest_path_nodes
+        (length, path) = nx.bidirectionnal_dijkstra(G=G, source=node_orig, target=node_dest, weight=target_weight)
 
-    def plot_route(self, path, G=None):
+        return path
+
+    def plot_route(self, path, stop_list=None, G=None):
 
         if G is None:
             G = self.G_multimodal_u
@@ -569,91 +412,19 @@ class MultimodalNet:
         return folium_revisited.plot_route_folium(
             G,
             path,
+            stop_list=stop_list,
             route_width=4,
             route_opacity=0.9,
         )
 
-    def heuristic_func(self, u: int, v: int) -> float:
-        return great_circle(
-            (self.G_multimodal_u.nodes[u]["y"], self.G_multimodal_u.nodes[u]["x"]),
-            (self.G_multimodal_u.nodes[v]["y"], self.G_multimodal_u.nodes[v]["x"]),
-        ).miles
+    def plot_route_visual_summary(self, scanned_route, path):
 
-    def plot_astar_exploration(
-        self,
-        orig: Tuple[float, float],
-        dest: Tuple[float, float],
-        target_weight: str = "CO2_eq_kg",
-        heuristic: Callable[[int, int], float] = None,
-        orig_dest_size: int = 100,
-    ):
-        if not heuristic:
-            heuristic = self.heuristic_func()
+        terminal_adresses = self.get_terminal_adress(path)
 
-        node_orig, dist_orig = ox.get_nearest_node(
-            self.G_multimodal_u, orig, method="haversine", return_dist=True
-        )
-        node_dest, dist_dest = ox.get_nearest_node(
-            self.G_multimodal_u, dest, method="haversine", return_dist=True
-        )
-
-        dist_path = nx.astar_path_length(
-            self.G_multimodal_u, node_orig, node_dest, weight="dist_miles"
-        )
-        weight_path = nx.astar_path_length(
-            self.G_multimodal_u, node_orig, node_dest, weight=target_weight
-        )
-
-        shortest_path_nodes, explored = astar_revisited.astar_path(
-            self.G_multimodal_u,
-            node_orig,
-            node_dest,
-            weight=target_weight,
-            heuristic=heuristic,
-        )
-
-        distance_highway = dist_path
-
-        dist_non_highway = dist_orig + dist_dest
-
-        total_dist = dist_non_highway + distance_highway
-
-        explored_nodes = set(explored.keys())
-        explored_nodes.update(explored.values())
-        explored_nodes.remove(None)
-        nodes = self.nodes.copy()
-        explored_nodes = nodes.loc[list(explored_nodes), :]
-
-        fig, ax = plt.subplots(figsize=(15, 7))
-
-        ax.scatter(orig[1], orig[0], marker="x", s=orig_dest_size, zorder=5)
-        ax.scatter(dest[1], dest[0], marker="x", s=orig_dest_size, zorder=10)
-        ax.scatter(
-            explored_nodes.x, explored_nodes.y, marker="o", color="red", s=2, zorder=100
-        )
-
-        ox.plot_graph(
-            self.G_multimodal_u,
-            edge_color="#bfbfbf",
-            node_color="#595959",
-            bgcolor="w",
-            ax=ax,
-            show=False,
-        )
-        ox.plot_graph_route(
-            self.G_multimodal_u,
-            shortest_path_nodes,
-            route_color="g",
-            route_linewidth=4,
-            route_alpha=0.9,
-            orig_dest_size=100,
-            ax=ax,
-        )
-
-        self.print_graph_info(total_dist, weight_path, target_weight)
+        return dash_plots_utils.plot_route_detail(scanned_route, terminal_adresses)
 
     def chosen_path_mode(self, route_details):
-        if "intermodal_link" in route_details.index:
+        if "rail" in route_details.index:
             return "Multimodal"
         else:
             return "Truckload"
@@ -696,7 +467,7 @@ class MultimodalNet:
             )
         return norm_summary
 
-    def plot_route_summary(self, summary: DataFrame, chosen: str) -> PlotlyFig:
+    def generate_bar_plot(self, summary: DataFrame, chosen_mode: str) -> PlotlyFig:
 
         summary = summary.copy()
 
@@ -719,97 +490,33 @@ class MultimodalNet:
 
         norm_summary = self.normalize_summary(summary)
 
-        fig = go.Figure()
-        s_t = summary[summary.level_1 == "Truckload"]
-        s_t_n = norm_summary[norm_summary.level_1 == "Truckload"]
-        s_m = summary[summary.level_1 == "Multimodal"]
-        s_m_n = norm_summary[norm_summary.level_1 == "Multimodal"]
-
-        if chosen == "Truckload":
-            color_t = "rgb(48, 36, 216)"
-            color_m = "rgb(170, 167, 209)"
-            t_name = "Truck(Chosen)"
-            m_name = "Multimodal"
-        else:
-            color_m = "rgb(48, 36, 216)"
-            color_t = "rgb(170, 167, 209)"
-            t_name = "Truck"
-            m_name = "Multimodal(Chosen)"
-
-        fig.add_trace(
-            go.Bar(
-                x=s_t.level_0.values,
-                y=s_t_n.vals.values,
-                textposition="auto",
-                text=round(s_t.vals, 1).values,
-                orientation="v",
-                name=t_name,
-                marker_color=color_t,
-                hoverinfo='skip'
-            )
-        )
-        fig.add_trace(
-            go.Bar(
-                x=s_m.level_0.values,
-                y=s_m_n.vals.values,
-                textposition="auto",
-                text=round(s_m.vals, 1).values,
-                orientation="v",
-                name=m_name,
-                marker_color=color_m,
-                hoverinfo='skip'
-            )
-        )
-
-        fig.update_layout(
-            # width=600,
-            height=180,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-        )
-
-        fig.update_layout(
-            yaxis={
-                "showticklabels": False,
-                "showgrid": False,
-                "zeroline": False,
-            },
-            xaxis={
-                "showticklabels": True,
-                "showgrid": False,
-                "zeroline": False,
-                "tickfont": {"color": "rgb(128, 128, 128)"},
-            },
-            legend=dict(
-                orientation="h", font={"color": "rgb(128, 128, 128)"}, y=1.2, x=0.35
-            ),
-            margin=dict(l=0, r=0, b=0, t=0),
-            hoverlabel=None,
-        )
-
-        return fig
+        return dash_plots_utils.bar_plot_summary(summary, norm_summary, chosen_mode)
 
     def get_terminal_adress(self, path: list) -> list:
         intermodal_terminals_info = pd.read_csv(
-            self.script_dir + "/data/intermodal_adress.csv"
+            self.script_dir + "/data/intermodal_address.csv"
         )
         terminal_adresses = []
-        for idx in range(len(path)):
+        for idx in range(1, len(path) - 1):
             if path[idx] < 200:
+                # Road to Rail
                 if (
-                    self.G_multimodal_u[path[idx - 1]][path[idx]][0]["trans_mode"]
+                    self.G_multimodal_u[path[idx - 1]][path[idx]]["trans_mode"]
                     == "intermodal_link"
                 ):
                     terminal_adresses.append(
                         intermodal_terminals_info.loc[path[idx], "TERM_ADDRE"]
+                        + ", "
                         + intermodal_terminals_info.loc[path[idx], "TERMINAL"]
                     )
+                # Rail to Road
                 elif (
-                    self.G_multimodal_u[path[idx]][path[idx + 1]][0]["trans_mode"]
+                    self.G_multimodal_u[path[idx]][path[idx + 1]]["trans_mode"]
                     == "intermodal_link"
                 ):
                     terminal_adresses.append(
                         intermodal_terminals_info.loc[path[idx], "TERM_ADDRE"]
+                        + ", "
                         + intermodal_terminals_info.loc[path[idx], "TERMINAL"]
                     )
 
@@ -818,7 +525,7 @@ class MultimodalNet:
     def rail_route_operators(self, path, rail_edges_counter):
         operators = []
         for u, v in zip(path[:-1], path[1:]):
-            d = self.G_multimodal_u[u][v][0]
+            d = self.G_multimodal_u[u][v]
             for k, v in zip(d.keys(), d.values()):
                 if k[:7] == "RROWNER" or k[:7] == "TRKRGHT":
                     operators.append(v)
@@ -826,10 +533,11 @@ class MultimodalNet:
         main_operators = []
         counter = 0
         for operator, count in Counter(operators).most_common():
-            if counter < rail_edges_counter:
-                main_operators.append(operator)
-                counter += count
-            else:
-                break
+            if operator in self.class1_operators:
+                if counter < rail_edges_counter:
+                    main_operators.append(operator)
+                    counter += count
+                else:
+                    break
 
         return main_operators

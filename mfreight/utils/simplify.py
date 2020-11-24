@@ -140,14 +140,17 @@ def _build_path(G, endpoint, endpoint_successor, endpoints):
                         # a one-way street turns into a two-way here, but
                         # duplicate incoming one-way edges are present
                         utils.log(
-                            f"Unexpected simplify pattern handled near {successor}", level=lg.WARN
+                            f"Unexpected simplify pattern handled near {successor}",
+                            level=lg.WARN,
                         )
                         return path
                 else:
                     # if successor has >1 successors, then successor must have
                     # been an endpoint because you can go in 2 new directions.
                     # this should never occur in practice
-                    raise Exception(f"Unexpected simplify pattern failed near {successor}")
+                    raise Exception(
+                        f"Unexpected simplify pattern failed near {successor}"
+                    )
 
             # if this successor is an endpoint, we've completed the path
             return path
@@ -213,7 +216,9 @@ def _is_simplified(G):
     return "simplified" in G.graph and G.graph["simplified"]
 
 
-def simplify_graph(G, strict=True, remove_rings=True, attributes_to_sum=['MILES'], nodes_to_keep=None):
+def simplify_graph(
+    G, strict=True, remove_rings=True, attributes_to_sum=["MILES"], nodes_to_keep=None
+):
     """
     Simplify a graph's topology by removing interstitial nodes.
 
@@ -244,7 +249,9 @@ def simplify_graph(G, strict=True, remove_rings=True, attributes_to_sum=['MILES'
         topologically simplified graph
     """
     if _is_simplified(G):
-        raise Exception("This graph has already been simplified, cannot simplify it again.")
+        raise Exception(
+            "This graph has already been simplified, cannot simplify it again."
+        )
 
     utils.log("Begin topologically simplifying the graph...")
 
@@ -400,7 +407,9 @@ def consolidate_intersections(
         else:
             streets_per_node = utils_graph.count_streets_per_node(G)
 
-        dead_end_nodes = [node for node, count in streets_per_node.items() if count <= 1]
+        dead_end_nodes = [
+            node for node, count in streets_per_node.items() if count <= 1
+        ]
 
         # make a copy to not edit the original graph object the caller passed in
         G = G.copy()

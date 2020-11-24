@@ -72,23 +72,6 @@ class RailNet:
             inplace=True,
         )
 
-    def extract_nested_operators(self, rail_edges):
-        cols = [
-            col
-            for col in rail_edges.columns
-            if col[:7] == "RROWNER" or col[:7] == "TRKRGHT"
-        ]
-        for idx, row in rail_edges.iterrows():
-            j = 0
-            for col in cols:
-                if isinstance(row[col], list):
-                    for i in range(len(row[col]) - 1):
-                        rail_edges.loc[idx, "TRKRGHTS" + str(10 + i + j)] = row[col][
-                            i + 1
-                        ]
-                        rail_edges.loc[idx, col] = row[col][0]
-                    j += len(row[col]) - 1
-
     def keep_only_class_one(self, edges):
 
         rail_owners_cols = [col for col in edges.columns if col[:7] == "RROWNER"]
@@ -106,9 +89,7 @@ class RailNet:
 
         edges.drop(index=edges[~mask_prev].index, inplace=True)
 
-    def filter_rail_dataset(
-        self, nodes: GeoDataFrame, edges: GeoDataFrame
-    ):
+    def filter_rail_dataset(self, nodes: GeoDataFrame, edges: GeoDataFrame):
 
         self.keep_only_valid_usa_rail(edges)
 
@@ -223,6 +204,23 @@ class RailNet:
             rail_to_intermodal_map
         )
 
+    def extract_nested_operators(self, rail_edges):
+        cols = [
+            col
+            for col in rail_edges.columns
+            if col[:7] == "RROWNER" or col[:7] == "TRKRGHT"
+        ]
+        for idx, row in rail_edges.iterrows():
+            j = 0
+            for col in cols:
+                if isinstance(row[col], list):
+                    for i in range(len(row[col]) - 1):
+                        rail_edges.loc[idx, "TRKRGHTS" + str(10 + i + j)] = row[col][
+                            i + 1
+                        ]
+                        rail_edges.loc[idx, col] = row[col][0]
+                    j += len(row[col]) - 1
+
     def keep_largest_component(self):
         largest_comp_nodes = max(nx.connected_components(self.G), key=len)
         self.G = self.G.subgraph(largest_comp_nodes).copy()
@@ -243,7 +241,7 @@ class RailNet:
         save_graph: bool = False,
         save_nodes_edges=False,
         path: str = "/../Multimodal/data/rail_G.plk",
-        return_gdfs: bool = False
+        return_gdfs: bool = False,
     ) -> Graph:
 
         nodes, edges = self.load_BTS()
@@ -253,13 +251,14 @@ class RailNet:
             columns=["OBJECTID", "speed_mph", "FRAARCID", "DS", "IM_RT_TYPE"],
             inplace=True,
         )
-        self.G = build_graph.graph_from_gdfs_revisited(nodes, edges)
+        self.G = ox.graph_from_gdfs(nodes, edges)
 
         if simplified:
             self.simplify_graph(nodes)
-            nodes, edges = ox.graph_to_gdfs(self.G)
+            self.G = nx.Graph(self.G)
+            nodes, edges = build_graph.graph_to_gdfs2(self.G)
             self.extract_nested_operators(edges)
-            self.G = build_graph.graph_from_gdfs_revisited(nodes, edges)
+            self.G = build_graph.graph_from_gdfs2(nodes, edges)
 
         if save_graph:
             nx.write_gpickle(self.G, self.script_dir + path)

@@ -178,23 +178,23 @@ class MergeNets:
         else:
             self.G_road, self.G_rail = self.generate_graphs()
 
-        road_nodes, road_edges = ox.graph_to_gdfs(self.G_road)
-        rail_nodes, rail_edges = ox.graph_to_gdfs(self.G_rail)
+        road_nodes, road_edges = build_graph.graph_to_gdfs2(self.G_road)
+        rail_nodes, rail_edges = build_graph.graph_to_gdfs2(self.G_rail)
 
         road_nodes, road_edges = self.link_road_to_rail(
             road_nodes, rail_nodes, road_edges
         )
 
-        G_road_w_link = build_graph.graph_from_gdfs_revisited(road_nodes, road_edges)
-        self.G_rail = build_graph.graph_from_gdfs_revisited(rail_nodes, rail_edges)
+        G_road_w_link = build_graph.graph_from_gdfs2(road_nodes, road_edges)
+        self.G_rail = build_graph.graph_from_gdfs2(rail_nodes, rail_edges)
 
         self.G_multimodal = nx.compose(G_road_w_link, self.G_rail)
-        nodes, edges = ox.graph_to_gdfs(self.G_multimodal, fill_edge_geometry=True)
+        nodes, edges = build_graph.graph_to_gdfs2(self.G_multimodal, fill_edge_geometry=True)
         edges.rename(columns={"MILES": "dist_miles"}, inplace=True)
         # edges = edges[edges.key != 1] TODO There are 12 multi edges, not necessary to be removed
-
-        edges["key"] = 0
-        self.G_multimodal_u = build_graph.graph_from_gdfs(nodes, edges, undirected=True)
+        edges.drop(columns=["key"], inplace=True)
+        # edges["key"] = 0
+        self.G_multimodal_u = build_graph.graph_from_gdfs2(nodes, edges)
 
         if save:
             nx.write_gpickle(self.G_multimodal.to_undirected(), self.script_dir + path)

@@ -194,18 +194,12 @@ class RoadNet:
         nodes.set_index("nodes_pos", drop=True, inplace=True)
         return nodes
 
-    def remove_attribute(self, attribute_to_remove: list = ["new_idx"]):
-        for n, d in self.G.nodes(data=True):
-            for att in attribute_to_remove:
-                d.pop(att, None)
-
     def relabel_nodes(self, nodes):
         # This operation is performed once the graph has already been generated to avoid
         # using the replace function from pandas (very time consuming)
 
         map_ids = nodes.loc[:, "new_idx"].squeeze()
         nx.relabel_nodes(self.G, dict(map_ids), copy=False)
-        self.remove_attribute()
 
     def keep_largest_component(self):
         largest_comp_nodes = max(nx.connected_components(self.G), key=len)
@@ -227,11 +221,12 @@ class RoadNet:
 
         edges = self.load_BTS()
         nodes, edges = self.format_gdfs(edges)
-        self.G = build_graph.graph_from_gdfs_revisited(nodes, edges)
+        self.G = build_graph.graph_from_gdfs(nodes, edges)
         self.relabel_nodes(nodes)
 
         if simplified:
             self.simplify_graph()
+            self.G = nx.Graph(self.G)
 
         if save_graph:
             nx.write_gpickle(self.G, self.script_dir + path)
