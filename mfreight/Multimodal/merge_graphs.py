@@ -148,25 +148,63 @@ class MergeNets:
 
         return road_nodes, road_edges
 
-    def build_price_table(self):
-        spot_price = pd.read_csv(
-            self.script_dir + "/data/spot_price.csv",
-            index_col=["Origin State", "Destination State"],
+    def set_price_to_graph(self, set=True):
+
+        spot_price = self.load_price_table()
+
+        price_idx = spot_price.index
+
+        if set:
+
+            for u, v, d in self.G_multimodal_u.edges(data=True):
+                # This is a work around to avoid storing floats for each edge
+                # It reduces the size of the graph 211Mb -> 148Mb
+                if d["trans_mode"] == "road":
+                    self.G_multimodal_u[u][v].update(
+                        zip(price_idx, (10000* d["dist_miles"] * spot_price["Truckload"]).astype('int'))
+                    )
+
+                elif d["trans_mode"] == "rail":
+                    self.G_multimodal_u[u][v].update(
+                        zip(price_idx, (10000*d["dist_miles"] * spot_price["Intermodal"]).astype('int'))
+                    )
+                else:
+                    self.G_multimodal_u[u][v].update(
+                        zip(price_idx, (10000*d["dist_miles"] * spot_price["Intermodal"]).astype('int'))
+                    )
+                # if d["trans_mode"] == "road":
+                #     self.G_multimodal_u[u][v].update(
+                #         zip(price_idx, d["dist_miles"] * spot_price["Truckload"])
+                #     )
+                #
+                # elif d["trans_mode"] == "rail":
+                #     self.G_multimodal_u[u][v].update(
+                #         zip(price_idx, d["dist_miles"] * spot_price["Intermodal"])
+                #     )
+                # else:
+                #     self.G_multimodal_u[u][v].update(
+                #         zip(price_idx, d["dist_miles"] * spot_price["Intermodal"])
+                #     )
+
+        return price_idx
+
+    def load_price_table(self):
+        price_df = pd.read_csv(
+            self.script_dir + "/data/pricing.csv",
+            index_col=0,
         )  # mean aggregation
-        contract_price = pd.read_csv(
-            self.script_dir + "/data/contract_price.csv",
-            index_col=["Origin State", "Destination State"],
-        )
 
-        spot_price.fillna(contract_price, inplace=True)
-        spot_price.fillna(method="ffill")  # TODO improve padding
-        spot_price = spot_price / 1.61
-
-        return spot_price
+        # This is a work around to avoid storing strings in each edge attribute
+        # It reduces the size of the graph 148Mb -> 111Mb
+        # new_idx = list(range(len(price_df)-5))
+        # new_idx.extend(list(price_df.index)[-5:])
+        # price_df.index = new_idx
+        return price_df
 
     def merge_networks(
         self,
         import_preprocesses_graphs: bool = True,
+        add_price=True,
         save: bool = True,
         path: str = "/data/multimodal_G.plk",
         path_u: str = "/data/multimodal_G_u.plk",
@@ -195,6 +233,9 @@ class MergeNets:
         edges.drop(columns=["key"], inplace=True)
         # edges["key"] = 0
         self.G_multimodal_u = build_graph.graph_from_gdfs2(nodes, edges)
+
+        if add_price:
+            self.set_price_to_graph(set=True)
 
         if save:
             nx.write_gpickle(self.G_multimodal.to_undirected(), self.script_dir + path)

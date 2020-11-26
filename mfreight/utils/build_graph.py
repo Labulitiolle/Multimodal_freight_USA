@@ -62,6 +62,7 @@ def graph_from_gdfs(gdf_nodes, gdf_edges, graph_attrs=None, undirected=False):
             G.add_edge(u, v, k, **d)
     return G
 
+
 def graph_from_gdfs2(gdf_nodes, gdf_edges, graph_attrs=None):
     """
     Convert node and edge GeoDataFrames to a MultiDiGraph.
@@ -92,7 +93,11 @@ def graph_from_gdfs2(gdf_nodes, gdf_edges, graph_attrs=None):
     # values so that edges only get attributes with non-null values
     for u, v, edge_vals in zip(gdf_edges["u"], gdf_edges["v"], attr_values):
         edge_attrs = zip(attr_names, edge_vals)
-        data = {name: val for name, val in edge_attrs if isinstance(val, list) or pd.notnull(val)}
+        data = {
+            name: val
+            for name, val in edge_attrs
+            if isinstance(val, list) or pd.notnull(val)
+        }
         G.add_edge(u, v, **data)
 
     # add nodes' attributes to graph
@@ -107,9 +112,7 @@ def add_edges_from_df(g, gdf_edges):
     attr_col_headings = [c for c in gdf_edges.columns if c not in reserved_columns]
     attribute_data = zip(*[gdf_edges[col] for col in attr_col_headings])
 
-    for s, t, attrs in zip(
-        gdf_edges["u"], gdf_edges["v"], attribute_data
-    ):
+    for s, t, attrs in zip(gdf_edges["u"], gdf_edges["v"], attribute_data):
 
         g.add_edge(s, t)
 
@@ -139,12 +142,11 @@ def graph_from_gdfs_revisited(gdf_nodes, gdf_edges, graph_attrs=None):
     return g
 
 
-
-
-def graph_to_gdfs2(G, nodes=True, edges=True, node_geometry=True, fill_edge_geometry=True):
+def graph_to_gdfs2(
+    G, nodes=True, edges=True, node_geometry=True, fill_edge_geometry=True
+):
     """
-    Convert a graph to node and/or edge GeoDataFrames.
-    This function is the inverse of `graph_from_gdfs`.
+    Upgraded version of `graph_from_gdfs`, this is significantly faster.
     Parameters
     ----------
     G : networkx.MultiDiGraph
@@ -171,7 +173,9 @@ def graph_to_gdfs2(G, nodes=True, edges=True, node_geometry=True, fill_edge_geom
         if node_geometry:
             # convert node x/y attributes to Points for geometry column
             geom = (Point(d["x"], d["y"]) for d in data)
-            gdf_nodes = gpd.GeoDataFrame(data, index=nodes, crs=crs, geometry=list(geom))
+            gdf_nodes = gpd.GeoDataFrame(
+                data, index=nodes, crs=crs, geometry=list(geom)
+            )
         else:
             gdf_nodes = gpd.GeoDataFrame(data, index=nodes)
 

@@ -30,7 +30,7 @@ class MultimodalNet:
         self.G_multimodal_u = nx.read_gpickle(path_u)
         self.script_dir = os.path.dirname(__file__)
         self.class1_operators = ["BNSF", "UP", "CN", "CPRS", "KCS", "CSXT", "NS"]
-        self.price_idx = self.set_price_to_graph(set=False)
+        self.price_idx = self.get_price_idx()
 
         self.rail_edges = self.load_and_format_csv(
             self.script_dir + "/data/rail_edges.csv"
@@ -145,29 +145,9 @@ class MultimodalNet:
 
         return state_code
 
-    def set_price_to_graph(self, set=True):
-
+    def get_price_idx(self):
         spot_price = self.load_price_table()
-
         price_idx = spot_price.index
-
-        if set:
-
-            for u, v, d in self.G_multimodal_u.edges(data=True):
-
-                if d["trans_mode"] == "road":
-                    self.G_multimodal_u[u][v].update(
-                        zip(price_idx, d["dist_miles"] * spot_price["Truckload"])
-                    )
-
-                elif d["trans_mode"] == "rail":
-                    self.G_multimodal_u[u][v].update(
-                        zip(price_idx, d["dist_miles"] * spot_price["Intermodal"])
-                    )
-                else:
-                    self.G_multimodal_u[u][v].update(
-                        zip(price_idx, d["dist_miles"] * spot_price["Intermodal"])
-                    )
 
         return price_idx
 
@@ -243,9 +223,11 @@ class MultimodalNet:
 
         for w in weights:
             if w == "price" and price_target:
+                # This is a work around to avoid storing floats for each edge
+                # It reduces the size of the graph 211Mb -> 148Mb
                 weight = self._get_weight(price_target)
                 route_detail[str(w)] = [
-                    weight(G[u][v]) for u, v in zip(path[:-1], path[1:])
+                    weight(G[u][v])/10000 for u, v in zip(path[:-1], path[1:])
                 ]
             else:
                 weight = self._get_weight(w)
@@ -400,7 +382,7 @@ class MultimodalNet:
         )
 
 
-        (length, path) = nx.bidirectionnal_dijkstra(G=G, source=node_orig, target=node_dest, weight=target_weight)
+        (length, path) = nx.bidirectional_dijkstra(G=G, source=node_orig, target=node_dest, weight=target_weight)
 
         return path
 

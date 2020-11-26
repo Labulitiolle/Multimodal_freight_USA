@@ -25,6 +25,7 @@ def bidirectionnal_dijkstra(G, source, target, weight="weight"):
     push(fringe[0], (0, next(c), source))
     push(fringe[1], (0, next(c), target))
     # neighs for extracting correct neighbor information
+    counter=0
     if G.is_directed():
         neighs = [G._succ, G._pred]
     else:
@@ -39,6 +40,7 @@ def bidirectionnal_dijkstra(G, source, target, weight="weight"):
         dir = 1 - dir
         # extract closest to expand
         (dist, rank, v) = pop(fringe[dir])
+        counter+=1
         if v in dists[dir]:
             # Shortest path to v has already been found
             continue
@@ -47,7 +49,7 @@ def bidirectionnal_dijkstra(G, source, target, weight="weight"):
         if v in dists[1 - dir]:
             # if we have scanned v in both directions we are done
             # we have now discovered the shortest path
-            return (finalpath, finaldist, rank)
+            return (finalpath, finaldist, counter)
 
         for w, d in neighs[dir][v].items():
             if dir == 0:  # forward
@@ -90,6 +92,7 @@ def dijkstra(
     # use the count c to avoid comparing nodes (may not be able to)
     c = count()
     fringe = []
+    counter=0
     for source in sources:
         if source not in G:
             raise nx.NodeNotFound(f"Source {source} not in G")
@@ -97,6 +100,7 @@ def dijkstra(
         push(fringe, (0, next(c), source))
     while fringe:
         (d, rank, v) = pop(fringe)
+        counter += 1
         if v in dist:
             continue  # already searched this node.
         dist[v] = d
@@ -129,7 +133,7 @@ def dijkstra(
 
     # The optional predecessor and path dictionaries can be accessed
     # by the caller via the pred and paths objects passed as arguments.
-    return paths[target], dist, rank
+    return paths[target], dist, counter
 
 
 def astar_path(G, source, target, heuristic=None, weight="weight", capture_list=[None]):
@@ -194,6 +198,7 @@ def astar_path(G, source, target, heuristic=None, weight="weight", capture_list=
     while queue:
         # Pop the smallest item from queue.
         _, rank, curnode, dist, parent = pop(queue)
+        counter += 1
 
         if curnode == target:
             path = [curnode]
@@ -215,7 +220,7 @@ def astar_path(G, source, target, heuristic=None, weight="weight", capture_list=
                 continue
 
         explored[curnode] = parent
-        counter += 1
+
 
         for neighbor, w in G[curnode].items():
             ncost = dist + weight(curnode, neighbor, w)

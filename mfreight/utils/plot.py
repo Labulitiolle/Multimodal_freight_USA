@@ -197,8 +197,6 @@ def plot_graph(
 
     fig.canvas.draw()
     fig.canvas.flush_events()
-    if show:
-        plt.show()
 
     return fig, ax
 
@@ -259,7 +257,7 @@ def plot_usa_background(bbox, ax=None):
         fig, ax = plt.subplots(figsize=(20, 10))
 
     n_america_clipped = gpd.clip(n_america, bbox_polygon)
-    n_america_clipped.plot(ax=ax, edgecolor="#D8D8D8", color="#D8D8D8", alpha=0.5)
+    ax = n_america_clipped.plot(ax=ax, edgecolor="#D8D8D8", color="#D8D8D8", alpha=0.5)
     plt.axis("off")
 
     return ax
@@ -276,7 +274,9 @@ def plot_multimodal_graph(
     rail_width=1,
     rail_alpha=0.5,
     road_width=1,
-    road_alpha=0.1
+    road_alpha=0.1,
+    res=150,
+    title=None,
 ):
     """
     :param bbox: (north,south,east,west)
@@ -305,7 +305,7 @@ def plot_multimodal_graph(
                 nodes_intermodal_geometry.append(data["geometry"])
 
     if bbox is None:
-        bbox = (50, 20, -60, -140)
+        bbox = (52, 22, -66, -126)
 
     G_road = G.subgraph(nodes_road)
     G_rail = G.subgraph(nodes_rail)
@@ -318,10 +318,14 @@ def plot_multimodal_graph(
 
     else:
         fig, ax = plt.subplots(figsize=(20, 10))
+        print('shiit')
+
+    if title:
+        ax.set_title(title, color="grey", fontsize=24)
 
     if len(G_rail.edges()) > 1:
 
-        plot_graph(
+        fig, ax = plot_graph(
             G_rail,
             edge_color="green",
             edge_linewidth=rail_width,
@@ -336,10 +340,10 @@ def plot_multimodal_graph(
         )
 
         if show_intermodal:
-            intermodal_nodes.plot(ax=ax, color="red", alpha=1, markersize=2)
+            ax = intermodal_nodes.plot(ax=ax, color="red", alpha=1, markersize=2)
 
     if len(G_road.edges()) > 1:
-        plot_graph(
+        fig, ax = plot_graph(
             G_road,
             edge_color="blue",
             edge_linewidth=road_width,
@@ -348,21 +352,22 @@ def plot_multimodal_graph(
             bgcolor="white",
             node_size=0.01,
             node_alpha=0.2,
-            show=show,
+            show=False,
             ax=ax,
             bbox=bbox,
         )
 
     if save_path:
-        plt.savefig(save_path, dpi=700)
+        plt.savefig(save_path, dpi=res, pad_inches=0, bbox_inches='tight')
+    if show:
+        plt.show()
         # CLOSE PLOTS
-        # plt.close('all')
-
+    plt.close("all")
     return ax
 
 
-def plot_multimodal_path_search(G, orig, dest, save_path, show):
-    fig, ax = plt.subplots(figsize=(20, 10))
+def plot_multimodal_path_search(G, orig, dest, save_path, show, res=150, title=None):
+    fig, ax = plt.subplots(figsize=(14, 7))
     orig_point = gpd.GeoDataFrame({"geometry": [orig]}, crs="epsg:4326")
 
     dest_point = gpd.GeoDataFrame({"geometry": [dest]}, crs="epsg:4326")
@@ -377,12 +382,13 @@ def plot_multimodal_path_search(G, orig, dest, save_path, show):
         background=True,
         ax=ax,
         show_intermodal=False,
+        res=res,
+        title=title,
     )
 
 
-
-def plot_multimodal_route(G, orig, dest, save_path, route, show):
-    fig, ax = plt.subplots(figsize=(20, 10))
+def plot_multimodal_route(G, orig, dest, save_path, route, show, res=150, title=None):
+    fig, ax = plt.subplots(figsize=(14, 7))
     orig_point = gpd.GeoDataFrame({"geometry": [orig]}, crs="epsg:4326")
 
     dest_point = gpd.GeoDataFrame({"geometry": [dest]}, crs="epsg:4326")
@@ -399,6 +405,7 @@ def plot_multimodal_route(G, orig, dest, save_path, route, show):
         rail_width=2,
         rail_alpha=0.8,
         road_width=2,
-        road_alpha=0.8
+        road_alpha=0.8,
+        res=res,
+        title=title,
     )
-

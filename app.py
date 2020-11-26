@@ -21,7 +21,8 @@ server = app.server
 
 
 start = time.time()
-Net = MultimodalNet(path_u="mfreight/Multimodal/data/multimodal_G_tot_u_w_price.plk")
+# Net = MultimodalNet(path_u="mfreight/Multimodal/data/multimodal_G_tot_u_w_price.plk")
+Net = MultimodalNet(path_u="mfreight/Multimodal/data/multimodal_G_tot_u_w_pricesX4.plk")
 print(f"Loaded in Elapsed time: {time.time() - start}")
 
 all_rail_owners = Net.get_rail_owners()
@@ -36,7 +37,7 @@ def build_upper_left_panel():
                 children=[
                     html.P(
                         className="control_label",
-                        children="Chose route",
+                        children="1. Chose route",
                     ),
                     html.Div(
                         className="control-row-1",
@@ -72,7 +73,7 @@ def build_upper_left_panel():
                     html.Br(),
                     html.P(
                         className="control_label",
-                        children="Select target feature",
+                        children="2. Select target feature",
                     ),
                     html.Br(),
                     dcc.RadioItems(
@@ -87,7 +88,7 @@ def build_upper_left_panel():
                     html.Br(),
                     html.P(
                         className="control_label",
-                        children="Select rail operators",
+                        children="3. Select rail operators",
                     ),
                     html.Br(),
                     dcc.Dropdown(
