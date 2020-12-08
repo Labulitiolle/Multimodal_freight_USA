@@ -9,7 +9,9 @@ import osmnx as ox
 import pandas as pd
 from geopy.distance import great_circle
 from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderUnavailable
 from shapely import wkt
+from urllib3.exceptions import ReadTimeoutError
 
 from mfreight.utils import constants, folium_revisited, shortest_path_revisited, plot
 from mfreight.Multimodal import dash_plots_utils
@@ -132,15 +134,22 @@ class MultimodalNet:
         return edges_to_remove, nodes_to_remove
 
     def extract_state(self, position: Tuple[float, float]):
+
         try:
             location = Nominatim(user_agent="green-multimodal-network").reverse(
                 position, zoom=5
             )
-        except:
+
+        except TypeError:
             raise AssertionError(
                 "The chosen position is not on land"
-            )  # TODO improve the dash error message
-        state = re.findall("(\w+)\,", location[0])[0]
+            )
+        except GeocoderUnavailable:
+            raise AssertionError(
+                "Open Street Map geocoder timeout error, default pricing is shown. Please reload the page"
+            )
+
+        state = re.findall("(\w+?\s?\w+)\,", location[0])[0]
         state_code = constants.state_abbrev_map[state]
 
         return state_code

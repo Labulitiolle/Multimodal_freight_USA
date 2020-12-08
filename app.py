@@ -21,8 +21,7 @@ server = app.server
 
 
 start = time.time()
-# Net = MultimodalNet(path_u="mfreight/Multimodal/data/multimodal_G_tot_u_w_price.plk")
-Net = MultimodalNet(path_u="mfreight/Multimodal/data/multimodal_G_tot_u_w_pricesX4.plk")
+Net = MultimodalNet(path_u="mfreight/Multimodal/data/multimodal_G_tot_u_w_price.plk")
 print(f"Loaded in Elapsed time: {time.time() - start}")
 
 all_rail_owners = Net.get_rail_owners()
@@ -30,9 +29,9 @@ options = [{"label": i, "value": i} for i in all_rail_owners]
 print(f"Refeshed in Elapsed time: {time.time() - start}")
 
 
-def build_upper_left_panel():
+def build_parameter_panel():
     return html.Div(
-        [
+        children=[
             html.Div(
                 children=[
                     html.P(
@@ -40,42 +39,36 @@ def build_upper_left_panel():
                         children="1. Chose route",
                     ),
                     html.Div(
-                        className="control-row-1",
+                        id="select-departure_id",
                         children=[
-                            html.Div(
-                                id="select-departure_id",
-                                children=[
-                                    html.Label(
-                                        "Enter a (lat, long) departure position"
-                                    ),
-                                    dcc.Input(
-                                        id="departure",
-                                        value="(27.938220, -81.698181)",#(34.050717, -118.288621)
-                                        type="text",
-                                    ),
-                                ],
-                            ),
-                            html.Div(
-                                id="select-arrival_id",
-                                children=[
-                                    html.Label(
-                                        "Enter a (lat, long) destination position"
-                                    ),
-                                    dcc.Input(
-                                        id="arrival",
-                                        value="(41.815994, -87.670207)",
-                                        type="text",
-                                    ),
-                                ],
+                            html.Label("Departure position (lat, long)"),
+                            dcc.Input(
+                                id="departure",
+                                value="(27.938220, -81.698181)",  # (34.050717, -118.288621)
+                                type="text",
                             ),
                         ],
                     ),
-                    html.Br(),
+                    html.Div(
+                        id="select-arrival_id",
+                        children=[
+                            html.Label("Destination position (lat, long)"),
+                            dcc.Input(
+                                id="arrival",
+                                value="(41.815994, -87.670207)",
+                                type="text",
+                            ),
+                        ],
+                    ),
+                ],
+                className="six columns",
+            ),
+            html.Div(
+                children=[
                     html.P(
                         className="control_label",
                         children="2. Select target feature",
                     ),
-                    html.Br(),
                     dcc.RadioItems(
                         id="feature-selector",
                         options=[
@@ -86,6 +79,11 @@ def build_upper_left_panel():
                         value="CO2_eq_kg",
                     ),
                     html.Br(),
+                ],
+                className="six columns",
+            ),
+            html.Div(
+                children=[
                     html.P(
                         className="control_label",
                         children="3. Select rail operators",
@@ -98,15 +96,24 @@ def build_upper_left_panel():
                         multi=True,
                         searchable=True,
                     ),
-                    html.Br(),
-                    html.Div(
-                        className="button-div",
-                        children=[html.Button("Update", id="submit-button")],
-                    ),
                 ],
-                className="pretty_container",
-                id="upper-left-param",
+                id="third-param",
             ),
+            html.Br(),
+            html.Div(
+                className="button-div",
+                children=[html.Button("Update", id="submit-button")],
+            ),
+        ],
+        className="pretty_container",
+        id="upper-left-param",
+    )
+
+
+def build_upper_left_panel():
+    return html.Div(
+        [
+            build_parameter_panel(),
             html.Div(
                 id="graph-container",
                 className="graph-container",
@@ -141,7 +148,7 @@ app.layout = html.Div(
             id="banner",
             className="banner",
             children=[
-                html.H6("Intermodal freight network"),
+                html.H6("Intermodal route optimizer"),
                 html.Img(src=app.get_asset_url("logo.png")),
             ],
         ),
@@ -161,9 +168,12 @@ app.layout = html.Div(
                         html.Div(
                             id="geo-map-loading-outer",
                             children=[
-                                html.H1("Multimodal optimized route"),
+                                # html.H1("Multimodal optimized route"),
                                 dcc.Loading(
-                                children=html.Iframe(id="map", width="100%", height=600))
+                                    children=html.Iframe(
+                                        id="map", width="100%", height=600
+                                    )
+                                ),
                             ],
                         ),
                         html.Div(
@@ -186,6 +196,7 @@ app.layout = html.Div(
                         ),
                         html.Br(),
                         html.Div(className="explanatory-text", id="rail-operators"),
+                        html.Div(className="error-text", id="error"),
                     ],
                 ),
             ],
@@ -200,6 +211,7 @@ app.layout = html.Div(
         Output("bar-plot-results", "figure"),
         Output("route-visual-summary", "figure"),
         Output("rail-operators", "children"),
+        Output("error", "children"),
     ],
     [Input("submit-button", "n_clicks")],
     state=[
@@ -210,12 +222,18 @@ app.layout = html.Div(
     ],
 )
 def update_geo_map(n_clicks, select_arrival, select_departure, operators, feature):
+    error = None
 
     departure = format_input_positions(select_departure)
     arrival = format_input_positions(select_arrival)
 
     start = time.time()
-    price_target = Net.get_price_target(departure, arrival)
+    try:
+        price_target = Net.get_price_target(departure, arrival)
+    except AssertionError as a:
+        error = a
+        # Use default to display something
+        price_target = 'range2'
     print(f"get_price_target Elapsed time: {time.time() - start}")
 
     start = time.time()
@@ -224,10 +242,7 @@ def update_geo_map(n_clicks, select_arrival, select_departure, operators, featur
 
     start = time.time()
     path = Net.get_shortest_path(
-        departure,
-        arrival,
-        target_weight=feature,
-        price_target=price_target
+        departure, arrival, target_weight=feature, price_target=price_target
     )
     print(f"get_shortest_path Elapsed time: {time.time() - start}")
 
@@ -276,19 +291,28 @@ def update_geo_map(n_clicks, select_arrival, select_departure, operators, featur
     build_graph.add_edges_from_df(Net.G_multimodal_u, removed_edges)
     print(f"Add Elapsed time: {time.time() - start}")
 
-    return fig._repr_html_(), bar_plot_results, route_visual_summary, operators_string
+    error_message = gen_error_message(error)
+    return fig._repr_html_(), bar_plot_results, route_visual_summary, operators_string, error_message
 
 
 def gen_rail_operators_display(main_operators):
     return r"The rail road displayed is operated by:  " + ", ".join(main_operators)
+
+def gen_error_message(error):
+    if error:
+        return r"Error: " + str(error)
+    else:
+        return ''
+
 
 def format_input_positions(input_string):
     position_y = float(re.findall(r"(-?\d+.\d+)\)", input_string)[0])
     position_x = float(re.findall(r"\((-?\d+.\d+)", input_string)[0])
     return (position_x, position_y)
 
-# Dev
-if __name__ == "__main__":
-    app.run_server(debug=True)
 
-# server.run(host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    # Dev
+    # app.run_server(debug=True)
+    # Prod
+    server.run(host="0.0.0.0", port=5000)
