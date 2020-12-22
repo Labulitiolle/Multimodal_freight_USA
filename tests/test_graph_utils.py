@@ -65,19 +65,19 @@ def test_chose_operator_in_graph(
         return_value=gen_graph_for_operator_choice,
     )
     mocker.patch(
+        "mfreight.Multimodal.graph_utils.MultimodalNet.get_reachable_nodes",
+        return_value=gen_graph_for_operator_choice,
+    )
+    mocker.patch(
         "mfreight.Multimodal.graph_utils.MultimodalNet.chose_operator_in_df",
         return_value=(gen_edges_to_remove, None),
     )
 
     Net = MultimodalNet()
-    MultimodalNet().chose_operator_in_graph(["CN", "NS"])
+    MultimodalNet().chose_operator_in_graph(G=gen_graph_for_operator_choice, operators=["CN", "NS"])
 
-    assert len(Net.G_multimodal_u) == 7
-    assert list(Net.G_multimodal_u.edges) == [
-        (1, 2, 0),
-        (4, 5, 0),
-        (5, 6, 0),
-    ]  # Road is not removed
+    assert len(Net.G_multimodal_u) == 6
+    assert list(Net.G_multimodal_u.edges) == [(1, 2), (4, 5), (5, 6)]  # Road is not removed
 
 
 def test_extract_state(mocker):
@@ -101,22 +101,11 @@ def test_get_price_target(mocker, state_1, state_2, expected_target_price):
         side_effect=[state_1, state_2],
     )
 
-    price_target = Net.get_price_target((1, 1), (2, 2), pd.Index([("AR", "CA")]))
+    price_target = Net.get_price_target((1, 1), (2, 2))
     assert expected_target_price == price_target
 
 
-def test_set_price_to_graph(mocker, gen_graph_for_price):
-    mocker.patch(
-        "networkx.read_gpickle",
-        return_value=gen_graph_for_price,
-    )
-    Net = MultimodalNet()
-    Net.set_price_to_graph()
 
-    assert round(Net.G_multimodal_u[10000][10002][0]["('AR', 'CA')"], 2) == 18.90
-    assert round(Net.G_multimodal_u[10000][10002][0]["range1"], 2) == 19.81
-    assert round(Net.G_multimodal_u[10002][10003][0]["('AR', 'CA')"], 2) == 155.18
-    assert round(Net.G_multimodal_u[10003][10000][0]["('AR', 'CA')"], 2) == 1551.85
 
 
 def test_route_detail_from_graph(mocker, gen_graph_for_details):
@@ -128,14 +117,14 @@ def test_route_detail_from_graph(mocker, gen_graph_for_details):
     )
 
     Net = MultimodalNet()
-    route_summary = Net.route_detail_from_graph(
-        path=[10000, 10002, 10003, 10004],
+    route_summary = Net.route_detail_from_graph(G=graph,
+        path=[10000, 10002, 10003, 10004, 10005],
         show_breakdown_by_mode=True,
         show_entire_route=False,
     )
 
-    assert list(route_summary.index) == ["rail", "road", "Total"]
-    assert list(route_summary.distance_miles) == [3000, 1000, 4000]
+    assert list(route_summary.index) == ["intermodal_link", "rail", "Total"]
+    assert list(route_summary.distance_miles) == [3000.0, 2000.0, 5000.0]
     assert list(route_summary.columns) == [
         "CO2_eq_kg",
         "distance_miles",

@@ -148,7 +148,9 @@ class MergeNets:
 
         return road_nodes, road_edges
 
-    def set_price_to_graph(self, set=True):
+    def set_price_to_graph(self, set:bool=True, G: Graph=None):
+        if G is None:
+            G = self.G_multimodal_u
 
         spot_price = self.load_price_table()
 
@@ -156,35 +158,23 @@ class MergeNets:
 
         if set:
 
-            for u, v, d in self.G_multimodal_u.edges(data=True):
+            for u, v, d in G.edges(data=True):
                 # This is a work around to avoid storing floats for each edge
                 # It reduces the size of the graph 211Mb -> 148Mb
                 if d["trans_mode"] == "road":
-                    self.G_multimodal_u[u][v].update(
+                    G[u][v].update(
                         zip(price_idx, (10000* d["dist_miles"] * spot_price["Truckload"]).astype('int'))
                     )
 
                 elif d["trans_mode"] == "rail":
-                    self.G_multimodal_u[u][v].update(
+                    G[u][v].update(
                         zip(price_idx, (10000*d["dist_miles"] * spot_price["Intermodal"]).astype('int'))
                     )
                 else:
-                    self.G_multimodal_u[u][v].update(
+                    G[u][v].update(
                         zip(price_idx, (10000*d["dist_miles"] * spot_price["Intermodal"]).astype('int'))
                     )
-                # if d["trans_mode"] == "road":
-                #     self.G_multimodal_u[u][v].update(
-                #         zip(price_idx, d["dist_miles"] * spot_price["Truckload"])
-                #     )
-                #
-                # elif d["trans_mode"] == "rail":
-                #     self.G_multimodal_u[u][v].update(
-                #         zip(price_idx, d["dist_miles"] * spot_price["Intermodal"])
-                #     )
-                # else:
-                #     self.G_multimodal_u[u][v].update(
-                #         zip(price_idx, d["dist_miles"] * spot_price["Intermodal"])
-                #     )
+
 
         return price_idx
 
@@ -194,11 +184,6 @@ class MergeNets:
             index_col=0,
         )  # mean aggregation
 
-        # This is a work around to avoid storing strings in each edge attribute
-        # It reduces the size of the graph 148Mb -> 111Mb
-        # new_idx = list(range(len(price_df)-5))
-        # new_idx.extend(list(price_df.index)[-5:])
-        # price_df.index = new_idx
         return price_df
 
     def merge_networks(

@@ -28,7 +28,7 @@ class RoadNet:
         self,
         bbox: Polygon = None,
         graph: Graph = None,
-        kg_co2_per_tmiles: float = 0.05001,
+        kg_co2_per_tmiles: float = 0.05001
     ):
         self.trans_mode = "road"
         self.kg_co2_per_tmiles = kg_co2_per_tmiles

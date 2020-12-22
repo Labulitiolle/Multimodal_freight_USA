@@ -130,3 +130,13 @@ def test_link_road_to_rail(gen_formatted_rail_and_road_nodes):
     assert list(road_edges.u) == [10000, 10002, 10003, 10002, 10003]
     assert list(road_edges.v) == [10002, 10003, 10000, 2, 10]
     assert list(road_edges.duration_h) == [0.1, 1, 2, 2, 2]
+
+def test_set_price_to_graph(mocker, gen_graph_for_price):
+
+    Net = MergeNets()
+    G = gen_graph_for_price
+    Net.set_price_to_graph(set=True, G=G)
+
+    assert round(G[10000][10002]["('AR', 'CA')"], 2) == 188960
+    assert round(G[10000][10002]["range1"], 2) == 198130
+    assert round(G[10002][10003]["('AR', 'CA')"], 2) == 1551800

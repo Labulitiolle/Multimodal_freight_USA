@@ -1,14 +1,12 @@
-FROM continuumio/miniconda3
+FROM python:3.8
 
 # Create the environment:
-COPY environment.yaml .
-RUN conda env create -f environment.yaml
+COPY requirements-app.txt .
+RUN pip install -r requirements-app.txt
 
-# Make RUN commands use the new environment:
-SHELL ["conda", "run", "-n", "geo_env", "/bin/bash", "-c"]
 
 # Copy source code
 COPY . .
 
 # Run the application
-ENTRYPOINT ["conda", "run", "-n", "geo_env", "python", "app.py"]
+CMD ["python", "app.py"]

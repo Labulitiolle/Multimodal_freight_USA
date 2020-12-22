@@ -1,0 +1,10 @@
+mfreight/Road/data/florida-latest.osm.pbf
+mfreight/Road/data/National_Highway_Network-shp
+*.DS_Store
+__pycache__
+.ipynb_checkpoints
+.idea
+.pytest_cache
+.git
+local_tests.ipynb
+Notebooks/

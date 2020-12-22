@@ -5,6 +5,7 @@ import pytest
 from shapely.geometry import LineString, Point
 
 from mfreight.Road.gen_road_net import RoadNet
+from mfreight.utils import build_graph
 
 
 def test_get_speed_data(mocker):
@@ -126,11 +127,11 @@ def test_add_incident_nodes():
 def test_remove_attribute(gen_nodes_edges_before_reindexing):
     nodes, edges = gen_nodes_edges_before_reindexing
 
-    graph = ox.graph_from_gdfs(nodes, edges)
+    graph = build_graph.graph_from_gdfs2(nodes, edges)
     net = RoadNet(graph=graph)
     net.relabel_nodes(nodes)
-    nodes, edges = ox.graph_to_gdfs(net.G)
-    assert list(nodes.columns) == ["key", "x", "y", "geometry"]
+    nodes, edges = build_graph.graph_to_gdfs2(net.G)
+    assert list(nodes.columns) == ['key', "x", "y", 'new_idx', "geometry"]
     assert list(nodes.index) == [
         1000000000,
         1000000001,
@@ -144,7 +145,7 @@ def test_remove_attribute(gen_nodes_edges_before_reindexing):
 def test_simplify_graph(gen_nodes_edges_after_reindexing):
     nodes, edges = gen_nodes_edges_after_reindexing
 
-    graph = ox.graph_from_gdfs(nodes, edges)
+    graph = build_graph.graph_from_gdfs_revisited(nodes, edges)
     net = RoadNet(graph=graph)
     net.simplify_graph()
     nodes, edges = ox.graph_to_gdfs(net.G)
@@ -158,10 +159,10 @@ def test_simplify_graph(gen_nodes_edges_after_reindexing):
 def test_keep_largest_component(gen_nodes_edges_after_reindexing_two_components):
     nodes, edges = gen_nodes_edges_after_reindexing_two_components
 
-    graph = ox.graph_from_gdfs(nodes, edges)
+    graph = build_graph.graph_from_gdfs2(nodes, edges)
     net = RoadNet(graph=graph.to_undirected())
     net.keep_largest_component()
-    nodes, edges = ox.graph_to_gdfs(net.G)
+    nodes, edges = build_graph.graph_to_gdfs2(net.G)
 
     assert list(nodes.index) == [1000000000, 1000000001, 1000000002]
 
@@ -228,7 +229,6 @@ def test_format_gdfs(mocker):
 
     assert net.kg_co2_per_tmiles == 10
     assert "trans_mode" in list(edges.columns)
-    assert "key" in list(edges.columns)
     assert list(edges.MILES) == [0.1, 1, 10]
     assert list(edges.duration_h) == [0.01, 0.02, 0.5]
     assert list(edges.CO2_eq_kg) == [1, 10, 100]

@@ -237,7 +237,7 @@ def update_geo_map(n_clicks, select_arrival, select_departure, operators, featur
     print(f"get_price_target Elapsed time: {time.time() - start}")
 
     start = time.time()
-    removed_edges, removed_nodes = Net.chose_operator_in_graph(operators)
+    removed_edges, removed_nodes = Net.chose_operator_in_graph(operators=operators)
     print(f"chose_operator_in_graph Elapsed time: {time.time() - start}")
 
     start = time.time()
@@ -268,7 +268,7 @@ def update_geo_map(n_clicks, select_arrival, select_departure, operators, featur
 
     start = time.time()
     route_visual_summary = Net.plot_route_visual_summary(scanned_route, path)
-    print(f"gen_table Elapsed time: {time.time() - start}")
+    print(f"plot_route_visual_summary Elapsed time: {time.time() - start}")
 
     start = time.time()
     route_specs = Net.compute_all_paths(

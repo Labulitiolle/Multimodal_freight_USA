@@ -4,7 +4,6 @@ import geopandas as gpd
 import networkx as nx
 import numpy as np
 import pandas as pd
-from osmnx import utils
 from shapely.geometry import LineString, Point
 
 
@@ -112,11 +111,17 @@ def add_edges_from_df(g, gdf_edges):
     attr_col_headings = [c for c in gdf_edges.columns if c not in reserved_columns]
     attribute_data = zip(*[gdf_edges[col] for col in attr_col_headings])
 
-    for s, t, attrs in zip(gdf_edges["u"], gdf_edges["v"], attribute_data):
+    if g.is_multigraph():
+        gdf_edges = gdf_edges.set_index(["u", "v", "key"])
+        for (u, v, k), attr_vals in zip(gdf_edges.index, gdf_edges.values):
+            data_all = zip(attr_col_headings, attr_vals)
+            data = {name: val for name, val in data_all if isinstance(val, list) or pd.notnull(val)}
+            g.add_edge(u, v, key=k, **data)
 
-        g.add_edge(s, t)
-
-        g[s][t].update(zip(attr_col_headings, attrs))
+    else:
+        for s, t, attrs in zip(gdf_edges["u"], gdf_edges["v"], attribute_data):
+            g.add_edge(s, t)
+            g[s][t].update(zip(attr_col_headings, attrs))
 
 
 def add_nodes_from_df(g, gdf_nodes):
@@ -179,7 +184,7 @@ def graph_to_gdfs2(
         else:
             gdf_nodes = gpd.GeoDataFrame(data, index=nodes)
 
-        utils.log("Created nodes GeoDataFrame from graph")
+
 
     if edges:
 
@@ -216,7 +221,6 @@ def graph_to_gdfs2(
         gdf_edges["u"] = u
         gdf_edges["v"] = v
 
-        utils.log("Created edges GeoDataFrame from graph")
 
     if nodes and edges:
         return gdf_nodes, gdf_edges

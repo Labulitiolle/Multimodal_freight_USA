@@ -5,15 +5,13 @@ from typing import Any, Callable, List, Tuple, TypeVar
 
 import networkx as nx
 import numpy as np
-import osmnx as ox
 import pandas as pd
 from geopy.distance import great_circle
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderUnavailable
 from shapely import wkt
-from urllib3.exceptions import ReadTimeoutError
 
-from mfreight.utils import constants, folium_revisited, shortest_path_revisited, plot
+from mfreight.utils import constants, folium_revisited
 from mfreight.Multimodal import dash_plots_utils
 
 Polygon = TypeVar("shapely.geometry.polygon.Polygon")
@@ -27,11 +25,13 @@ PlotlyFig = TypeVar("plotly.graph_objs._figure.Figure")
 class MultimodalNet:
     def __init__(
         self,
-        path_u: str = "mfreight/Multimodal/data/multimodal_G_u.plk",
+        path_u: str = "mfreight/Multimodal/data/multimodal_G_tot_u_w_price.plk",
+        payload_weight_t: float = 40.0,
     ):
         self.G_multimodal_u = nx.read_gpickle(path_u)
         self.script_dir = os.path.dirname(__file__)
         self.class1_operators = ["BNSF", "UP", "CN", "CPRS", "KCS", "CSXT", "NS"]
+        self.payload_weight_t = payload_weight_t
         self.price_idx = self.get_price_idx()
 
         self.rail_edges = self.load_and_format_csv(
@@ -123,13 +123,15 @@ class MultimodalNet:
 
         return edges_to_remove, nodes_to_remove
 
-    def chose_operator_in_graph(self, operators: List[str] = ["CSXT"]) -> GeoDataFrame:
+    def chose_operator_in_graph(self, operators: List[str] = ["CSXT"], G :Graph=None) -> GeoDataFrame:
+        if G is None:
+            G = self.G_multimodal_u
 
         edges_to_remove, nodes_to_remove = self.chose_operator_in_df(operators)
 
         to_remove = zip(edges_to_remove.u, edges_to_remove.v)
 
-        self.G_multimodal_u.remove_edges_from(to_remove)
+        G.remove_edges_from(to_remove)
 
         return edges_to_remove, nodes_to_remove
 
@@ -141,9 +143,7 @@ class MultimodalNet:
             )
 
         except TypeError:
-            raise AssertionError(
-                "The chosen position is not on land"
-            )
+            raise AssertionError("The chosen position is not on land")
         except GeocoderUnavailable:
             raise AssertionError(
                 "Open Street Map geocoder timeout error, default pricing is shown. Please reload the page"
@@ -166,7 +166,9 @@ class MultimodalNet:
             index_col=0,
         )  # mean aggregation
 
-    def get_price_target(self, departure, arrival):
+    def get_price_target(
+        self, departure: Tuple[float, float], arrival: Tuple[float, float]
+    ):
         orig_state = self.extract_state(departure)
         dest_state = self.extract_state(arrival)
 
@@ -203,11 +205,11 @@ class MultimodalNet:
         if G is None:
             G = self.G_multimodal_u
 
-        node_orig = ox.get_nearest_node(
-            self.G_reachable_nodes, orig, method="haversine"
+        node_orig = self.get_nearest_node(
+            G=self.G_reachable_nodes, point=orig
         )
-        node_dest = ox.get_nearest_node(
-            self.G_reachable_nodes, dest, method="haversine"
+        node_dest = self.get_nearest_node(
+            G=self.G_reachable_nodes, point=dest
         )
 
         shortest_path_nx = nx.astar_path(G, node_orig, node_dest, weight=target_weight)
@@ -236,13 +238,15 @@ class MultimodalNet:
                 # It reduces the size of the graph 211Mb -> 148Mb
                 weight = self._get_weight(price_target)
                 route_detail[str(w)] = [
-                    weight(G[u][v])/10000 for u, v in zip(path[:-1], path[1:])
+                    weight(G[u][v]) / 10000 for u, v in zip(path[:-1], path[1:])
                 ]
             else:
                 weight = self._get_weight(w)
                 route_detail[str(w)] = [
                     weight(G[u][v]) for u, v in zip(path[:-1], path[1:])
                 ]
+
+        route_detail["CO2_eq_kg"] = route_detail["CO2_eq_kg"] * self.payload_weight_t
 
         if show_entire_route:
             return route_detail
@@ -267,7 +271,7 @@ class MultimodalNet:
 
         return route_summary
 
-    def scan_route(self, route_detail):
+    def scan_route(self, route_detail: DataFrame) -> DataFrame:
         weights = ["price", "CO2_eq_kg", "duration_h", "dist_miles"]
         new_df = pd.DataFrame(columns=weights)
         new_row = pd.Series(index=weights, data=[0, 0, 0, 0])
@@ -321,12 +325,12 @@ class MultimodalNet:
 
         return new_df, rail_counter, stop_list
 
-    def get_heuristics(self, price_target):
+    def get_heuristics(self, price_target: str):
         G = self.G_multimodal_u
         price_df = self.load_price_table()
         min_price = min(price_df.loc[price_target])
 
-        def heuristic_func_duration(u, v, G=G):
+        def heuristic_func_duration(u: int, v: int, G: Graph = G):
             return (
                 great_circle(
                     (G.nodes[u]["y"], G.nodes[u]["x"]),
@@ -335,7 +339,7 @@ class MultimodalNet:
                 / 75
             )
 
-        def heuristic_func_co2(u, v, G=G):
+        def heuristic_func_co2(u: int, v: int, G: Graph = G):
             return (
                 great_circle(
                     (G.nodes[u]["y"], G.nodes[u]["x"]),
@@ -344,7 +348,9 @@ class MultimodalNet:
                 * 0.01213
             )
 
-        def heuristic_func_price(u, v, G=G, min_price=min_price):
+        def heuristic_func_price(
+            u: int, v: int, G: Graph = G, min_price: float = min_price
+        ):
             return (
                 great_circle(
                     (G.nodes[u]["y"], G.nodes[u]["x"]),
@@ -359,7 +365,7 @@ class MultimodalNet:
             "price": heuristic_func_price,
         }
 
-    def heuristic_func_co22(self, u, v):
+    def heuristic_func_co22(self, u: int, v: int):
         G = self.G_multimodal_u
         return (
             great_circle(
@@ -374,8 +380,8 @@ class MultimodalNet:
         dest: Tuple[float, float],
         target_weight: str = "CO2_eq_kg",
         price_target: str = "range1",
-        G: Graph = None
-    ):
+        G: Graph = None,
+    ) -> list:
 
         if G is None:
             G = self.G_multimodal_u
@@ -383,19 +389,19 @@ class MultimodalNet:
         if target_weight == "price":
             target_weight = price_target
 
-        node_orig, dist_orig = ox.get_nearest_node(
-            self.G_reachable_nodes, orig, method="haversine", return_dist=True
+        node_orig, dist_orig = self.get_nearest_node(
+            G=self.G_reachable_nodes, point=orig, return_dist=True
         )
-        node_dest, dist_dest = ox.get_nearest_node(
-            self.G_reachable_nodes, dest, method="haversine", return_dist=True
+        node_dest, dist_dest = self.get_nearest_node(
+            G=self.G_reachable_nodes, point=dest, return_dist=True)
+
+        (length, path) = nx.bidirectional_dijkstra(
+            G=G, source=node_orig, target=node_dest, weight=target_weight
         )
-
-
-        (length, path) = nx.bidirectional_dijkstra(G=G, source=node_orig, target=node_dest, weight=target_weight)
 
         return path
 
-    def plot_route(self, path, stop_list=None, G=None):
+    def plot_route(self, path: list, stop_list: list = None, G: Graph = None):
 
         if G is None:
             G = self.G_multimodal_u
@@ -408,13 +414,13 @@ class MultimodalNet:
             route_opacity=0.9,
         )
 
-    def plot_route_visual_summary(self, scanned_route, path):
+    def plot_route_visual_summary(self, scanned_route: DataFrame, path: list):
 
         terminal_adresses = self.get_terminal_adress(path)
 
         return dash_plots_utils.plot_route_detail(scanned_route, terminal_adresses)
 
-    def chosen_path_mode(self, route_details):
+    def chosen_path_mode(self, route_details: DataFrame) -> str:
         if "rail" in route_details.index:
             return "Multimodal"
         else:
@@ -532,3 +538,33 @@ class MultimodalNet:
                     break
 
         return main_operators
+
+    def get_nearest_node(self, point: Tuple[float, float],return_dist:bool=False, G: Graph = None) -> int:
+        if G is None:
+            G = self.G_multimodal_u
+
+        coords = ((n, d["x"], d["y"]) for n, d in G.nodes(data=True))
+        df = pd.DataFrame(coords, columns=["node", "x", "y"]).set_index("node")
+        df['point_lon'] = point[1]
+
+        phi1 = np.deg2rad(df.y)
+        phi2 = np.deg2rad([point[0]]*len(df))
+        d_phi = phi2 - phi1
+
+        d_theta = np.deg2rad(df.x - point[1])
+
+        h = (
+            np.sin(d_phi / 2) ** 2
+            + np.cos(phi1) * np.cos(phi2) * np.sin(d_theta / 2) ** 2
+        )
+        h = np.minimum(1.0, h)  # protect against floating point errors
+
+        arc = 2 * np.arcsin(np.sqrt(h))
+
+        # earth_radius = 6371009 m, une m to avoid floating point errors
+        dist = arc * 6371009
+        node = dist.idxmin()
+        if return_dist:
+            return node, min(dist)
+        else:
+            return node
