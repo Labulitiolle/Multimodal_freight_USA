@@ -130,7 +130,7 @@ body {
   line-height: 1.6;
   font-weight: 400;
   font-family: "Open Sans", "HelveticaNeue", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  color: rgb(128, 128, 128); }
+  color: rgba(255, 255, 255, 0.87); }
 
 
 /* Typography
@@ -186,7 +186,7 @@ input[type="button"] {
   display: inline-block;
   height: 38px;
   padding: 0 30px;
-  color: #555;
+  color: #FFFFFF;
   text-align: center;
   font-size: 11px;
   font-weight: 600;

@@ -4,8 +4,11 @@
 Goal: Generate and analyze a multimodal network in the USA to make freight transportation greener.
 
 ## Usage
-Clone the repository and run `pip install -r requirements.txt` to install the required packages. <br>
-Display the dash app by running the `app.py` file.
+To run the app on a docker image:
+Clone the repo, change the work direction and run the following commands in your CLI:<br>
+`$ docker build -t dockermfreigh .` To build the image with it's own conda environment and all the requirements for the project <br>
+`$ docker run -p 5000:5000 --name green_freight dockermfreigh` To run the image and display the app on the local server. <br>
+Then, open you browser and type localhost:5000. The app should be running.
 
 ## Structure
 ### Jupyter Notebooks

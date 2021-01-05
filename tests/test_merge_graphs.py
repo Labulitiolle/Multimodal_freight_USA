@@ -36,7 +36,7 @@ def test_map_intermodal_to_road(mocker):
 
     assert list(intermodal_to_road_map.index) == [2, 5, 10]
     assert list(intermodal_to_road_map.road_idx) == [1004, 1003, 1002]
-    assert list(intermodal_to_road_map.dist) == [55597.54, 64812.42, 200325.94]
+    assert list(intermodal_to_road_map.dist) == [34.55, 40.27, 124.48]
 
 
 def test_gen_intermodal_links():
@@ -44,7 +44,7 @@ def test_gen_intermodal_links():
         index=[2, 5, 10],
         data={
             "road_idx": [1004, 1003, 1002],
-            "dist": [55589.07, 64824.04, 200410.48],
+            "dist": [100, 200, 10],
         },
     )
 
@@ -52,7 +52,7 @@ def test_gen_intermodal_links():
         {
             "STATUS": [0],
             "trans_mode": ["road"],
-            "length": [1000],
+            "MILES": [1000],
             "duration_h": [0.1],
             "CO2_eq_kg": [1],
             "geometry": [LineString()],
@@ -62,13 +62,13 @@ def test_gen_intermodal_links():
         }
     )
 
-    intermodal_links = MergeNets(kg_co2_per_tkm=10).gen_intermodal_links(
+    intermodal_links = MergeNets(kg_co2_per_tmiles=10).gen_intermodal_links(
         intermodal_to_road_map, road_edges
     )
 
     assert list(intermodal_links.u) == [1004, 1003, 1002]
     assert list(intermodal_links.v) == [2, 5, 10]
-    assert list(round(intermodal_links.CO2_eq_kg, 2)) == [555.89, 648.24, 2004.10]
+    assert list(intermodal_links.CO2_eq_kg) == [1000, 2000, 100]
 
 
 def test_gen_intermodal_nodes(gen_formatted_rail_and_road_nodes):
@@ -83,7 +83,6 @@ def test_gen_intermodal_nodes(gen_formatted_rail_and_road_nodes):
     )
 
     assert list(intermodal_nodes.index) == [2, 10]
-    assert list(intermodal_nodes.STCYFIPS) == [12321, 12111]
     assert list(intermodal_nodes.x) == [1.9, 0.5]
     assert list(intermodal_nodes.columns) == [
         "trans_mode",
@@ -96,14 +95,14 @@ def test_gen_intermodal_nodes(gen_formatted_rail_and_road_nodes):
     ]
 
 
-def test_link_road_to_rail(gen_formatted_rail_and_road_nodes, mocker):
+def test_link_road_to_rail(gen_formatted_rail_and_road_nodes):
 
     road_edges = gpd.GeoDataFrame(
         index=[101, 102, 103],
         data={
             "STATUS": [1, 1, 1],
             "trans_mode": ["road", "road", "road"],
-            "length": [1000, 10000, 20000],
+            "MILES": [1000, 10000, 20000],
             "duration_h": [0.1, 1, 2],
             "CO2_eq_kg": [0.01, 0.1, 0.2],
             "geometry": [LineString(), LineString(), LineString()],
@@ -131,3 +130,13 @@ def test_link_road_to_rail(gen_formatted_rail_and_road_nodes, mocker):
     assert list(road_edges.u) == [10000, 10002, 10003, 10002, 10003]
     assert list(road_edges.v) == [10002, 10003, 10000, 2, 10]
     assert list(road_edges.duration_h) == [0.1, 1, 2, 2, 2]
+
+def test_set_price_to_graph(mocker, gen_graph_for_price):
+
+    Net = MergeNets()
+    G = gen_graph_for_price
+    Net.set_price_to_graph(set=True, G=G)
+
+    assert round(G[10000][10002]["('AR', 'CA')"], 2) == 188960
+    assert round(G[10000][10002]["range1"], 2) == 198130
+    assert round(G[10002][10003]["('AR', 'CA')"], 2) == 1551800
