@@ -4,7 +4,6 @@ from typing import TypeVar
 import networkx as nx
 import pandas as pd
 
-import osmnx as ox
 from geopy.distance import great_circle
 from mfreight.Rail.gen_rail_net import RailNet
 from mfreight.Road.gen_road_net import RoadNet
