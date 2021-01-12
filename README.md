@@ -6,38 +6,22 @@ Goal: Generate and analyze a multimodal network in the USA to make freight trans
 ## Usage
 To run the app on a docker image:
 Clone the repo, change the work direction and run the following commands in your CLI:<br>
-`$ docker build -t dockermfreigh .` To build the image with it's own conda environment and all the requirements for the project <br>
+`$ docker build -t dockermfreigh .` To build the image with its own python environment and all the requirements for the project <br>
 `$ docker run -p 5000:5000 --name green_freight dockermfreigh` To run the image and display the app on the local server. <br>
-Then, open you browser and type localhost:5000. The app should be running.
+Then, open your browser and type localhost:5000. The app should be running.
 
-## Structure
-### Jupyter Notebooks
-| File | Description | Status |
-| ----------- | ----------- |  ----------- | 
-| Rail_EDA.ipynb | Exploration and cleaning of the [BTS](https://data-usdot.opendata.arcgis.com/datasets/north-american-rail-lines-1) rail network dataset | Done |
-| Rail_EDA_florida.ipynb | Rail network generation for florida, computation speed assessment | Done |
-| Rail_network.ipynb | Rail network analysis | Later |
-| OSM_roads_florida.ipynb | Generate the road network of florida from OSM data | Done |
-| BTS_roads_florida.ipynb | Generate the road network of florida from BTS data | Done |
-| Florida_roads_compare.ipynb | Compare BTS with OSM network routing performance | Done |
-| OSM_problems.ipynb | Analyzed why OSM data is not producing a correct graph| Done |
-| CO2_EDA.ipynb | Compute co2 equivalent for rail and road | Done |
-| merge_florida.ipynb | Merge Rail and road network through intermodal facilities | Done |
-| verify_gen_network.ipynb | Generate the rail and road network, display them | Done |
-| verify_merge.ipynb | Verify merge networks, display the resulting plot | Done |
-| astar_heuristic.ipynb | Explore and plot the astar routing algorithm | WIP |
+## Description
+This project intended to build a simplified model of a multimodal freight network in the USA.
+### Data
+The data used in this project was essentially pulled from publicly available databases:
+The geographical data for roads and railroads are available on the [BTS](https://data-usdot.opendata.arcgis.com) atlas database. For the edges attributes other data sources were used:
+* __CO2 emissions:__ The emissions for each mode were computed using the U.S. LifeCycle Inventory Database (USLCI) database. To estimate the CO2emissions of a shipment, a weight of about 40 tonnes per load was estimated assuming a 53 feet container filled at 70% of its max capacity.
+* __Duration:__ For both, the rail and the road graphs, each edge had a distance attribute defined in the initial data set. To compute the duration, speed had to be assigned. For railroads, the track class of each edge was used. For roads, the state speed limit was used.
+* __Pricing:__ An internal historical database was used for a rough estimations of state to state pricing per mode.
 
+### Notebooks
+Analysis of the different networks, the different path search algorithms and Noe4j performance can be found in the `Notebooks` directory.
 
-### Scripts
-| Directory | File | Description | Status |
-| ----------- | ----------- | ----------- |  ----------- | 
-| mfreight.Rail| gen_rail_net.py | Generate rail network | Done|
-| mfreight.Road| gen_road_net.py | Generate road network | Done|
-| mfreight.Multimodal | merge_graphs.py | Merge rail and road networks | PR|
-| mfreight.Multimodal | graph_utils.py | Display and adapt the multimodal graph | PR|
-| mfreight.utils.| * | All the support functions for the main scripts above | PR|
-| . | app.py | Plotly dash app | Could be improved|
+### Disclaimer
+This model is a PoC, the duration, pricing and CO2 results displayed in the app are only estimations.
 
-## License
-
-This project is licensed under Private.

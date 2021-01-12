@@ -123,7 +123,9 @@ class MultimodalNet:
 
         return edges_to_remove, nodes_to_remove
 
-    def chose_operator_in_graph(self, operators: List[str] = ["CSXT"], G :Graph=None) -> GeoDataFrame:
+    def chose_operator_in_graph(
+        self, operators: List[str] = ["CSXT"], G: Graph = None
+    ) -> GeoDataFrame:
         if G is None:
             G = self.G_multimodal_u
 
@@ -205,14 +207,12 @@ class MultimodalNet:
         if G is None:
             G = self.G_multimodal_u
 
-        node_orig = self.get_nearest_node(
-            G=self.G_reachable_nodes, point=orig
-        )
-        node_dest = self.get_nearest_node(
-            G=self.G_reachable_nodes, point=dest
-        )
+        node_orig = self.get_nearest_node(G=self.G_reachable_nodes, point=orig)
+        node_dest = self.get_nearest_node(G=self.G_reachable_nodes, point=dest)
 
-        shortest_path_nx = nx.astar_path(G, node_orig, node_dest, weight=target_weight)
+        _, shortest_path_nx = nx.bidirectional_dijkstra(
+            G, node_orig, node_dest, weight=target_weight
+        )
 
         return self.route_detail_from_graph(
             shortest_path_nx, show_entire_route=show_entire_route
@@ -393,7 +393,8 @@ class MultimodalNet:
             G=self.G_reachable_nodes, point=orig, return_dist=True
         )
         node_dest, dist_dest = self.get_nearest_node(
-            G=self.G_reachable_nodes, point=dest, return_dist=True)
+            G=self.G_reachable_nodes, point=dest, return_dist=True
+        )
 
         (length, path) = nx.bidirectional_dijkstra(
             G=G, source=node_orig, target=node_dest, weight=target_weight
@@ -539,16 +540,18 @@ class MultimodalNet:
 
         return main_operators
 
-    def get_nearest_node(self, point: Tuple[float, float],return_dist:bool=False, G: Graph = None) -> int:
+    def get_nearest_node(
+        self, point: Tuple[float, float], return_dist: bool = False, G: Graph = None
+    ) -> int:
         if G is None:
             G = self.G_multimodal_u
 
         coords = ((n, d["x"], d["y"]) for n, d in G.nodes(data=True))
         df = pd.DataFrame(coords, columns=["node", "x", "y"]).set_index("node")
-        df['point_lon'] = point[1]
+        df["point_lon"] = point[1]
 
         phi1 = np.deg2rad(df.y)
-        phi2 = np.deg2rad([point[0]]*len(df))
+        phi2 = np.deg2rad([point[0]] * len(df))
         d_phi = phi2 - phi1
 
         d_theta = np.deg2rad(df.x - point[1])
