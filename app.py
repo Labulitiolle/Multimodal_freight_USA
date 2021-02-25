@@ -19,14 +19,10 @@ app = dash.Dash(
 )
 server = app.server
 
-
-start = time.time()
 Net = MultimodalNet(path_u="mfreight/Multimodal/data/multimodal_G_tot_u_w_price.plk")
-print(f"Loaded in Elapsed time: {time.time() - start}")
 
 all_rail_owners = Net.get_rail_owners()
 options = [{"label": i, "value": i} for i in all_rail_owners]
-print(f"Refeshed in Elapsed time: {time.time() - start}")
 
 
 def build_parameter_panel():
@@ -73,7 +69,7 @@ def build_parameter_panel():
                         id="feature-selector",
                         options=[
                             {"label": "CO2 Emissions", "value": "CO2_eq_kg"},
-                            {"label": "Price", "value": "Price"},
+                            {"label": "Price", "value": "price"},
                             {"label": "Duration", "value": "duration_h"},
                         ],
                         value="CO2_eq_kg",
@@ -171,7 +167,7 @@ app.layout = html.Div(
                                 # html.H1("Multimodal optimized route"),
                                 dcc.Loading(
                                     children=html.Iframe(
-                                        id="map", width="100%", height=600
+                                        id="map", width="100%", height=400
                                     )
                                 ),
                             ],
@@ -227,82 +223,65 @@ def update_geo_map(n_clicks, select_arrival, select_departure, operators, featur
     departure = format_input_positions(select_departure)
     arrival = format_input_positions(select_arrival)
 
-    start = time.time()
     try:
         price_target = Net.get_price_target(departure, arrival)
     except AssertionError as a:
         error = a
         # Use default to display something
-        price_target = 'range2'
-    print(f"get_price_target Elapsed time: {time.time() - start}")
+        price_target = "range2"
 
-    start = time.time()
     removed_edges, removed_nodes = Net.chose_operator_in_graph(operators=operators)
-    print(f"chose_operator_in_graph Elapsed time: {time.time() - start}")
 
-    start = time.time()
     path = Net.get_shortest_path(
         departure, arrival, target_weight=feature, price_target=price_target
     )
-    print(f"get_shortest_path Elapsed time: {time.time() - start}")
-
-    start = time.time()
     scanned_route, path_rail_edges, stop_list = Net.scan_route(
         Net.route_detail_from_graph(
             path, show_entire_route=True, price_target=price_target
         )
     )
-    print(f"scan_route Elapsed time: {time.time() - start}")
 
-    start = time.time()
     operators_string = gen_rail_operators_display(
         Net.rail_route_operators(path, path_rail_edges)
     )
-    print(f"gen_rail_operators_display Elapsed time: {time.time() - start}")
 
-    start = time.time()
     route_details = Net.route_detail_from_graph(path, price_target=price_target)
-    print(f"route_detail_from_graph Elapsed time: {time.time() - start}")
 
     chosen_mode = Net.chosen_path_mode(route_details)
-
-    start = time.time()
     route_visual_summary = Net.plot_route_visual_summary(scanned_route, path)
-    print(f"plot_route_visual_summary Elapsed time: {time.time() - start}")
 
-    start = time.time()
     route_specs = Net.compute_all_paths(
         departure=departure,
         arrival=arrival,
         price_target=price_target,
     )
-    print(f"compute_all_paths Elapsed time: {time.time() - start}")
 
-    start = time.time()
     bar_plot_results = Net.generate_bar_plot(route_specs, chosen_mode)
-    print(f"plot_route_summary Elapsed time: {time.time() - start}")
 
-    start = time.time()
     fig = Net.plot_route(path, stop_list)
-    print(f"plot_route Elapsed time: {time.time() - start}")
 
-    start = time.time()
     build_graph.add_nodes_from_df(Net.G_multimodal_u, removed_nodes)
     build_graph.add_edges_from_df(Net.G_multimodal_u, removed_edges)
-    print(f"Add Elapsed time: {time.time() - start}")
 
     error_message = gen_error_message(error)
-    return fig._repr_html_(), bar_plot_results, route_visual_summary, operators_string, error_message
+    return (
+        fig._repr_html_(),
+        bar_plot_results,
+        route_visual_summary,
+        operators_string,
+        error_message,
+    )
 
 
 def gen_rail_operators_display(main_operators):
     return r"The rail road displayed is operated by:  " + ", ".join(main_operators)
 
+
 def gen_error_message(error):
     if error:
         return r"Error: " + str(error)
     else:
-        return ''
+        return ""
 
 
 def format_input_positions(input_string):
@@ -313,6 +292,6 @@ def format_input_positions(input_string):
 
 if __name__ == "__main__":
     # Dev
-    # app.run_server(debug=True)
+    app.run_server(debug=True)
     # Prod
-    server.run(host="0.0.0.0", port=5000)
+    # server.run(host="0.0.0.0", port=5000)

@@ -318,7 +318,6 @@ def plot_multimodal_graph(
 
     else:
         fig, ax = plt.subplots(figsize=(20, 10))
-        print('shiit')
 
     if title:
         ax.set_title(title, color="grey", fontsize=24)
