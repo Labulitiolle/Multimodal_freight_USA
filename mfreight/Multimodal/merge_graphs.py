@@ -152,6 +152,7 @@ class MergeNets:
             G = self.G_multimodal_u
 
         spot_price = self.load_price_table()
+        ratio = spot_price.ratio
 
         price_idx = spot_price.index
 
@@ -161,17 +162,18 @@ class MergeNets:
                 # This is a work around to avoid storing floats for each edge
                 # It reduces the size of the graph 211Mb -> 148Mb
                 if d["trans_mode"] == "road":
-                    G[u][v].update(
-                        zip(price_idx, (10000* d["dist_miles"] * spot_price["Truckload"]).astype('int'))
-                    )
+                    continue
+                #     G[u][v].update(
+                #         zip(price_idx, (10000*d["dist_miles"] * spot_price["Truckload"]).astype('int'))
+                #     )
 
                 elif d["trans_mode"] == "rail":
                     G[u][v].update(
-                        zip(price_idx, (10000*d["dist_miles"] * spot_price["Intermodal"]).astype('int'))
+                        zip(price_idx, (d["dist_miles"] * ratio).astype('int'))
                     )
                 else:
                     G[u][v].update(
-                        zip(price_idx, (10000*d["dist_miles"] * spot_price["Intermodal"]).astype('int'))
+                        zip(price_idx, (d["dist_miles"] * ratio).astype('int'))
                     )
 
 

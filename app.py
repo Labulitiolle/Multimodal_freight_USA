@@ -6,7 +6,6 @@ import dash_html_components as html
 from dash.dependencies import Input, Output, State
 from mfreight.Multimodal.graph_utils import MultimodalNet
 from mfreight.utils import build_graph
-import time
 
 app = dash.Dash(
     __name__,
@@ -295,4 +294,3 @@ if __name__ == "__main__":
     app.run_server(debug=True)
     # Prod
     # server.run(host="0.0.0.0", port=5000)
-    

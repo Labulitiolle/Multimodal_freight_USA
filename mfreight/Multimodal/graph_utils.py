@@ -22,6 +22,16 @@ NDArray = TypeVar("numpy.ndarray")
 PlotlyFig = TypeVar("plotly.graph_objs._figure.Figure")
 
 
+def set_price_fun(weight):
+    price_target = weight
+    def price_weight_func(u, v, data):
+        if data['trans_mode'] == 'road':
+            return data.get('dist_miles', 1)
+        else:
+            return data.get(price_target, 1)
+    return price_weight_func
+
+
 class MultimodalNet:
     def __init__(
         self,
@@ -32,7 +42,7 @@ class MultimodalNet:
         self.script_dir = os.path.dirname(__file__)
         self.class1_operators = ["BNSF", "UP", "CN", "CPRS", "KCS", "CSXT", "NS"]
         self.payload_weight_t = payload_weight_t
-        self.price_idx = self.get_price_idx()
+        self.price_df = self.load_price_table()
 
         self.rail_edges = self.load_and_format_csv(
             self.script_dir + "/data/rail_edges.csv"
@@ -156,12 +166,6 @@ class MultimodalNet:
 
         return state_code
 
-    def get_price_idx(self):
-        spot_price = self.load_price_table()
-        price_idx = spot_price.index
-
-        return price_idx
-
     def load_price_table(self):
         return pd.read_csv(
             self.script_dir + "/data/pricing.csv",
@@ -174,7 +178,7 @@ class MultimodalNet:
         orig_state = self.extract_state(departure)
         dest_state = self.extract_state(arrival)
 
-        if str((orig_state, dest_state)) in self.price_idx:
+        if str((orig_state, dest_state)) in self.price_df.index:
             price_target = str((orig_state, dest_state))
 
         else:
@@ -196,27 +200,27 @@ class MultimodalNet:
     def _get_weight(weight: str) -> Callable[[str], Any]:
         return lambda data: data.get(weight, 0)
 
-    def route_detail_from_orig_dest(
-        self,
-        orig: Tuple[float, float],
-        dest: Tuple[float, float],
-        target_weight: str = "CO2_eq_kg",
-        G: Graph = None,
-        show_entire_route: bool = False,
-    ) -> DataFrame:
-        if G is None:
-            G = self.G_multimodal_u
-
-        node_orig = self.get_nearest_node(G=self.G_reachable_nodes, point=orig)
-        node_dest = self.get_nearest_node(G=self.G_reachable_nodes, point=dest)
-
-        _, shortest_path_nx = nx.bidirectional_dijkstra(
-            G, node_orig, node_dest, weight=target_weight
-        )
-
-        return self.route_detail_from_graph(
-            shortest_path_nx, show_entire_route=show_entire_route
-        )
+    # def route_detail_from_orig_dest(
+    #     self,
+    #     orig: Tuple[float, float],
+    #     dest: Tuple[float, float],
+    #     target_weight: str = "CO2_eq_kg",
+    #     G: Graph = None,
+    #     show_entire_route: bool = False,
+    # ) -> DataFrame:
+    #     if G is None:
+    #         G = self.G_multimodal_u
+    #
+    #     node_orig = self.get_nearest_node(G=self.G_reachable_nodes, point=orig)
+    #     node_dest = self.get_nearest_node(G=self.G_reachable_nodes, point=dest)
+    #
+    #     _, shortest_path_nx = nx.bidirectional_dijkstra(
+    #         G, node_orig, node_dest, weight=target_weight
+    #     )
+    #
+    #     return self.route_detail_from_graph(
+    #         shortest_path_nx, show_entire_route=show_entire_route
+    #     )
 
     def route_detail_from_graph(
         self,
@@ -231,14 +235,15 @@ class MultimodalNet:
         # The first row displays the intermodal links
         weights = ["trans_mode", "price", "CO2_eq_kg", "duration_h", "dist_miles"]
         route_detail = pd.DataFrame(index=range(len(path) - 1), columns=weights)
+        road_rate = self.price_df.loc[price_target, 'Truckload']
+        rail_rate = self.price_df.loc[price_target, 'Intermodal']
 
         for w in weights:
             if w == "price" and price_target:
-                # This is a work around to avoid storing floats for each edge
-                # It reduces the size of the graph 211Mb -> 148Mb
-                weight = self._get_weight(price_target)
+                weight_d = self._get_weight('dist_miles')#price_target
+
                 route_detail[str(w)] = [
-                    weight(G[u][v]) / 10000 for u, v in zip(path[:-1], path[1:])
+                    weight_d(G[u][v]) * road_rate if G[u][v]['trans_mode'] == 'road' else weight_d(G[u][v]) * rail_rate for u, v in zip(path[:-1], path[1:])
                 ]
             else:
                 weight = self._get_weight(w)
@@ -327,7 +332,6 @@ class MultimodalNet:
 
     def get_heuristics(self, price_target: str):
         G = self.G_multimodal_u
-        price_df = self.load_price_table()
         min_price = min(price_df.loc[price_target])
 
         def heuristic_func_duration(u: int, v: int, G: Graph = G):
@@ -374,6 +378,7 @@ class MultimodalNet:
             * 0.01213
         )
 
+
     def get_shortest_path(
         self,
         orig: Tuple[float, float],
@@ -387,7 +392,8 @@ class MultimodalNet:
             G = self.G_multimodal_u
 
         if target_weight == "price":
-            target_weight = price_target
+            # target_weight = price_target
+            target_weight = set_price_fun(price_target)
 
         node_orig, dist_orig = self.get_nearest_node(
             G=self.G_reachable_nodes, point=orig, return_dist=True
