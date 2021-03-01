@@ -40,8 +40,7 @@ class RailNet:
             4: 60,
             5: 80,
             6: 110,
-            13: 60,
-            None: 10,
+            13: 60
         }
         self.G = graph
         self.script_dir = os.path.dirname(__file__)
@@ -151,7 +150,7 @@ class RailNet:
         self.add_x_y_pos(nodes)
 
     def add_speed_duration(self, edges: GeoDataFrame):
-        edges["speed_mph"] = edges.TRACKS.replace(self.track_to_speed_map)
+        edges["speed_mph"] = edges.TRACKS.replace(self.track_to_speed_map).fillna(10)
         edges["duration_h"] = pd.eval("edges.MILES / edges.speed_mph")
 
     def add_x_y_pos(self, gdf: GeoDataFrame):
@@ -218,7 +217,7 @@ class RailNet:
                         rail_edges.loc[idx, "TRKRGHTS" + str(10 + i + j)] = row[col][
                             i + 1
                         ]
-                        rail_edges.loc[idx, col] = row[col][0]
+                    rail_edges.loc[idx, col] = row[col][0]
                     j += len(row[col]) - 1
 
     def keep_largest_component(self):

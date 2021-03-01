@@ -207,7 +207,7 @@ class MultimodalNet:
         show_breakdown_by_mode: bool = True,
         show_entire_route: bool = False,
         G: Graph = None,
-        price_target=None,
+        price_target='range3',
     ) -> DataFrame:
         if G is None:
             G = self.G_multimodal_u
