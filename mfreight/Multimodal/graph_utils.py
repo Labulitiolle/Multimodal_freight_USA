@@ -36,7 +36,7 @@ class MultimodalNet:
     def __init__(
         self,
         path_u: str = "mfreight/Multimodal/data/multimodal_G_tot_u_w_price.plk",
-        payload_weight_t: float = 40.0,
+        payload_weight_t: float = 25.0,
     ):
         self.G_multimodal_u = nx.read_gpickle(path_u)
         self.script_dir = os.path.dirname(__file__)
@@ -200,27 +200,6 @@ class MultimodalNet:
     def _get_weight(weight: str) -> Callable[[str], Any]:
         return lambda data: data.get(weight, 0)
 
-    # def route_detail_from_orig_dest(
-    #     self,
-    #     orig: Tuple[float, float],
-    #     dest: Tuple[float, float],
-    #     target_weight: str = "CO2_eq_kg",
-    #     G: Graph = None,
-    #     show_entire_route: bool = False,
-    # ) -> DataFrame:
-    #     if G is None:
-    #         G = self.G_multimodal_u
-    #
-    #     node_orig = self.get_nearest_node(G=self.G_reachable_nodes, point=orig)
-    #     node_dest = self.get_nearest_node(G=self.G_reachable_nodes, point=dest)
-    #
-    #     _, shortest_path_nx = nx.bidirectional_dijkstra(
-    #         G, node_orig, node_dest, weight=target_weight
-    #     )
-    #
-    #     return self.route_detail_from_graph(
-    #         shortest_path_nx, show_entire_route=show_entire_route
-    #     )
 
     def route_detail_from_graph(
         self,
@@ -228,7 +207,7 @@ class MultimodalNet:
         show_breakdown_by_mode: bool = True,
         show_entire_route: bool = False,
         G: Graph = None,
-        price_target=None,
+        price_target='range3',
     ) -> DataFrame:
         if G is None:
             G = self.G_multimodal_u
@@ -332,7 +311,7 @@ class MultimodalNet:
 
     def get_heuristics(self, price_target: str):
         G = self.G_multimodal_u
-        min_price = min(price_df.loc[price_target])
+        min_price = min(self.price_df.loc[price_target])
 
         def heuristic_func_duration(u: int, v: int, G: Graph = G):
             return (
@@ -570,8 +549,8 @@ class MultimodalNet:
 
         arc = 2 * np.arcsin(np.sqrt(h))
 
-        # earth_radius = 6371009 m, une m to avoid floating point errors
-        dist = arc * 6371009
+        earth_radius = 6371009 # m, une m to avoid floating point errors
+        dist = arc * earth_radius
         node = dist.idxmin()
         if return_dist:
             return node, min(dist)
