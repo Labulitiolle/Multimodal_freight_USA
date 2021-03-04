@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 import pytest
 from shapely.geometry import Point
@@ -123,7 +122,7 @@ def test_extract_nested_operators():
         "CSXT",
         "GFRR",
         "GFRR"
-    ]  # TODO np.nan not correct
+    ]
     assert list(rail_edges.iloc[1, :]) == [
         "AGR",
         "GFRR",

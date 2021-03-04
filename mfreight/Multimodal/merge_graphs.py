@@ -117,12 +117,10 @@ class MergeNets:
             x.append(rail_nodes.loc[row.Index, "x"])
             y.append(rail_nodes.loc[row.Index, "y"])
             geometry.append(rail_nodes.loc[row.Index, "geometry"])
-            # zip_code.append(rail_nodes.loc[row.Index, "STCYFIPS"])
 
         intermodal_nodes["x"] = x
         intermodal_nodes["y"] = y
         intermodal_nodes["geometry"] = geometry
-        # intermodal_nodes["STCYFIPS"] = zip_code
         intermodal_nodes["trans_mode"] = "intermodal"
         intermodal_nodes["key"] = 0
 
@@ -160,12 +158,9 @@ class MergeNets:
 
             for u, v, d in G.edges(data=True):
                 # This is a work around to avoid storing floats for each edge
-                # It reduces the size of the graph 211Mb -> 148Mb
+                # It reduces the size of the graph 211Mb -> 50Mb
                 if d["trans_mode"] == "road":
                     continue
-                #     G[u][v].update(
-                #         zip(price_idx, (10000*d["dist_miles"] * spot_price["Truckload"]).astype('int'))
-                #     )
 
                 elif d["trans_mode"] == "rail":
                     G[u][v].update(
@@ -215,9 +210,7 @@ class MergeNets:
         self.G_multimodal = nx.compose(G_road_w_link, self.G_rail)
         nodes, edges = build_graph.graph_to_gdfs2(self.G_multimodal, fill_edge_geometry=True)
         edges.rename(columns={"MILES": "dist_miles"}, inplace=True)
-        # edges = edges[edges.key != 1] TODO There are 12 multi edges, not necessary to be removed
         edges.drop(columns=["key"], inplace=True)
-        # edges["key"] = 0
         self.G_multimodal_u = build_graph.graph_from_gdfs2(nodes, edges)
 
         if add_price:

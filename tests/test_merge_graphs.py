@@ -136,7 +136,9 @@ def test_set_price_to_graph(mocker, gen_graph_for_price):
     Net = MergeNets()
     G = gen_graph_for_price
     Net.set_price_to_graph(set=True, G=G)
+    print(G[10003][10000])
 
-    assert round(G[10000][10002]["('AR', 'CA')"], 2) == 188960
-    assert round(G[10000][10002]["range1"], 2) == 198130
-    assert round(G[10002][10003]["('AR', 'CA')"], 2) == 1551800
+    assert list(G[10000][10002].keys()) == ['trans_mode', 'dist_miles', 'key']
+    assert round(G[10002][10003]["('AR', 'CA')"], 2) == 81
+    assert round(G[10003][10000]["range1"], 2) == 1028
+
