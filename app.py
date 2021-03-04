@@ -297,7 +297,7 @@ def format_input_positions(input_string):
 
 
 if __name__ == "__main__":
-    # Dev
+    # app
     app.run_server(debug=False)
-    # Prod
-    # server.run(host="0.0.0.0", port=5000)
+    # image
+    server.run(host="0.0.0.0", port=5000)
