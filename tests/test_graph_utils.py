@@ -74,10 +74,16 @@ def test_chose_operator_in_graph(
     )
 
     Net = MultimodalNet()
-    MultimodalNet().chose_operator_in_graph(G=gen_graph_for_operator_choice, operators=["CN", "NS"])
+    MultimodalNet().chose_operator_in_graph(
+        G=gen_graph_for_operator_choice, operators=["CN", "NS"]
+    )
 
     assert len(Net.G_multimodal_u) == 6
-    assert list(Net.G_multimodal_u.edges) == [(1, 2), (4, 5), (5, 6)]  # Road is not removed
+    assert list(Net.G_multimodal_u.edges) == [
+        (1, 2),
+        (4, 5),
+        (5, 6),
+    ]  # Road is not removed
 
 
 def test_extract_state(mocker):
@@ -105,9 +111,6 @@ def test_get_price_target(mocker, state_1, state_2, expected_target_price):
     assert expected_target_price == price_target
 
 
-
-
-
 def test_route_detail_from_graph(mocker, gen_graph_for_details):
     graph = gen_graph_for_details
 
@@ -117,7 +120,8 @@ def test_route_detail_from_graph(mocker, gen_graph_for_details):
     )
 
     Net = MultimodalNet()
-    route_summary = Net.route_detail_from_graph(G=graph,
+    route_summary = Net.route_detail_from_graph(
+        G=graph,
         path=[10000, 10002, 10003, 10004, 10005],
         show_breakdown_by_mode=True,
         show_entire_route=False,
