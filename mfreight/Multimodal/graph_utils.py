@@ -24,11 +24,13 @@ PlotlyFig = TypeVar("plotly.graph_objs._figure.Figure")
 
 def set_price_fun(weight):
     price_target = weight
+
     def price_weight_func(u, v, data):
-        if data['trans_mode'] == 'road':
-            return data.get('dist_miles', 1)
+        if data["trans_mode"] == "road":
+            return data.get("dist_miles", 1)
         else:
             return data.get(price_target, 1)
+
     return price_weight_func
 
 
@@ -200,7 +202,7 @@ class MultimodalNet:
     def _get_weight(weight: str) -> Callable[[str], Any]:
         return lambda data: data.get(weight, 0)
 
-
+      
     def route_detail_from_graph(
         self,
         path: List[int],
@@ -214,15 +216,18 @@ class MultimodalNet:
         # The first row displays the intermodal links
         weights = ["trans_mode", "price", "CO2_eq_kg", "duration_h", "dist_miles"]
         route_detail = pd.DataFrame(index=range(len(path) - 1), columns=weights)
-        road_rate = self.price_df.loc[price_target, 'Truckload']
-        rail_rate = self.price_df.loc[price_target, 'Intermodal']
+        road_rate = self.price_df.loc[price_target, "Truckload"]
+        rail_rate = self.price_df.loc[price_target, "Intermodal"]
 
         for w in weights:
             if w == "price" and price_target:
-                weight_d = self._get_weight('dist_miles')#price_target
+                weight_d = self._get_weight("dist_miles")  # price_target
 
                 route_detail[str(w)] = [
-                    weight_d(G[u][v]) * road_rate if G[u][v]['trans_mode'] == 'road' else weight_d(G[u][v]) * rail_rate for u, v in zip(path[:-1], path[1:])
+                    weight_d(G[u][v]) * road_rate
+                    if G[u][v]["trans_mode"] == "road"
+                    else weight_d(G[u][v]) * rail_rate
+                    for u, v in zip(path[:-1], path[1:])
                 ]
             else:
                 weight = self._get_weight(w)
@@ -356,7 +361,6 @@ class MultimodalNet:
             ).miles
             * 0.01213
         )
-
 
     def get_shortest_path(
         self,

@@ -164,3 +164,6 @@ STFIPS_tp_speed_map_kmh = {
     55: 113.0,
     56: 121.0,
 }
+
+DEFAULT_ORIG = (27.938220, -81.698181)
+DEFAULT_DEST = (41.815994, -87.670207)
