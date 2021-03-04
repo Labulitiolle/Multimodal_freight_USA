@@ -4,8 +4,10 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output, State
+
 from mfreight.Multimodal.graph_utils import MultimodalNet
 from mfreight.utils import build_graph
+from mfreight.utils.constants import DEFAULT_DEST, DEFAULT_ORIG
 
 app = dash.Dash(
     __name__,
@@ -39,7 +41,7 @@ def build_parameter_panel():
                             html.Label("Departure position (lat, long)"),
                             dcc.Input(
                                 id="departure",
-                                value="(27.938220, -81.698181)",  # (34.050717, -118.288621)
+                                value=str(DEFAULT_ORIG),
                                 type="text",
                             ),
                         ],
@@ -50,7 +52,7 @@ def build_parameter_panel():
                             html.Label("Destination position (lat, long)"),
                             dcc.Input(
                                 id="arrival",
-                                value="(41.815994, -87.670207)",
+                                value=str(DEFAULT_DEST),
                                 type="text",
                             ),
                         ],
@@ -163,7 +165,6 @@ app.layout = html.Div(
                         html.Div(
                             id="geo-map-loading-outer",
                             children=[
-                                # html.H1("Multimodal optimized route"),
                                 dcc.Loading(
                                     children=html.Iframe(
                                         id="map", width="100%", height=400
@@ -222,12 +223,18 @@ def update_geo_map(n_clicks, select_arrival, select_departure, operators, featur
     departure = format_input_positions(select_departure)
     arrival = format_input_positions(select_arrival)
 
-    try:
-        price_target = Net.get_price_target(departure, arrival)
-    except AssertionError as a:
-        error = a
-        # Use default to display something
-        price_target = "range2"
+    if departure == DEFAULT_ORIG and arrival == DEFAULT_DEST:
+        #  Don't overload Nominatim API
+        price_target = str(('FL', 'IL'))
+        print('yo')
+    else:
+        try:
+            price_target = Net.get_price_target(departure, arrival)
+        except AssertionError as a:
+            error = a
+            # Use default to display something
+            price_target = "range2"
+    print(price_target)
 
     removed_edges, removed_nodes = Net.chose_operator_in_graph(operators=operators)
 
@@ -291,6 +298,6 @@ def format_input_positions(input_string):
 
 if __name__ == "__main__":
     # Dev
-    app.run_server(debug=True)
+    app.run_server(debug=False)
     # Prod
     # server.run(host="0.0.0.0", port=5000)
