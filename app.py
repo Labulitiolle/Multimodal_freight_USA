@@ -226,7 +226,6 @@ def update_geo_map(n_clicks, select_arrival, select_departure, operators, featur
     if departure == DEFAULT_ORIG and arrival == DEFAULT_DEST:
         #  Don't overload Nominatim API
         price_target = str(('FL', 'IL'))
-        print('yo')
     else:
         try:
             price_target = Net.get_price_target(departure, arrival)
@@ -234,7 +233,6 @@ def update_geo_map(n_clicks, select_arrival, select_departure, operators, featur
             error = a
             # Use default to display something
             price_target = "range2"
-    print(price_target)
 
     removed_edges, removed_nodes = Net.chose_operator_in_graph(operators=operators)
 
