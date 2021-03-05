@@ -8,3 +8,4 @@ geopy~=2.0.0
 plotly~=4.11.0
 numpy~=1.19.0
 folium~=0.12.0
+newrelic
