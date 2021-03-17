@@ -357,7 +357,7 @@ def plot_multimodal_graph(
         )
 
     if save_path:
-        plt.savefig(save_path, dpi=res, pad_inches=0, bbox_inches='tight')
+        plt.savefig(save_path, dpi=res, pad_inches=0, bbox_inches='tight', transparent=True)
     if show:
         plt.show()
         # CLOSE PLOTS
